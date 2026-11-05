@@ -8,7 +8,7 @@
 - **点击悬浮按钮**：初始化并显示右侧抽屉（首次点击时才创建 iframe 并按固定格式加载 `{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}`，域名由 `env` 决定）
 - 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（支持鼠标和触摸）
 - 抽屉右上角有**关闭按钮**：点击只是把抽屉**移出视口**（`transform` 平移隐藏，不销毁 iframe），**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**；再次点击悬浮按钮重新显示
-- **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe、`drawer.onMessage()` 收 iframe 消息、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
+- **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe、`drawer.receiveFiles()` 接受产物文件、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -35,7 +35,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 1. 把宿主页（如 [demo.html](demo.html)）里的 `env` 临时改为 `'local'`（指向 `http://localhost:4173`）
 2. 打开 `http://localhost:4173/`，点击悬浮按钮打开抽屉
 3. 抽屉 iframe 加载 `http://localhost:4173/center/thd/chat/:agentCode[/:sessionId]?token=xxx`，由服务器命中 [test/iframe.html](test/iframe.html)
-4. 测试页会展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能按固定协议（`drawer-message`）向宿主页发消息（宿主页通过 `onMessage` 记录，日志同步显示）
+4. 测试页会展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能按固定协议发产物文件（`drawer-files`，payload 为 `DrawerFile[]`）给宿主页（宿主页通过 `receiveFiles` 记录，日志同步显示）
 
 注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
 
@@ -70,9 +70,9 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     files: [{ name: 'report.pdf', url: 'https://cdn.com/report.pdf', type: 'pdf' }],
   });
 
-  // 收消息 / 显隐变化：宿主不需要自己监听 message 事件
-  drawer.onMessage(function (payload) {
-    console.log('iframe 消息', payload);
+  // 接受产物文件 / 显隐变化：宿主不需要自己监听 message 事件
+  drawer.receiveFiles(function (files) {
+    console.log('产物文件', files);
   });
   drawer.onVisibilityChange(function (visible) {
     console.log('抽屉', visible ? '显示' : '隐藏');
@@ -133,14 +133,14 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `open()` | 显示抽屉（首次调用时初始化抽屉并加载 iframe） |
 | `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |
-| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`；iframe 未加载完自动排队，加载后补发） |
-| `onMessage(handler)` | 监听 iframe 发来的消息（仅接受本抽屉 iframe 的 `drawer-message`），返回取消监听函数 |
+| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 未加载完自动排队，加载后补发） |
+| `receiveFiles(handler)` | 接受产物文件：iframe 发来产物文件（`drawer-files`，payload 为 `DrawerFile[]`）时回调，返回取消监听函数 |
 | `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 |
 | `destroy()` | 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 |
 
 ## 消息协议（固定）
 
-宿主与 iframe 的通信**固定为以下协议**。宿主**不需要也不应**直接使用 `window.postMessage` 或 `window.addEventListener('message')` 收发消息，统一走 `DrawerHandle` 的 `sendMessage` / `onMessage` / `onVisibilityChange` 方法——组件内部会校验消息来源（只接受本抽屉 `iframe.contentWindow` 发来的合规消息），其他消息一律丢弃。
+宿主与 iframe 的通信**固定为以下协议**。宿主**不需要也不应**直接使用 `window.postMessage` 或 `window.addEventListener('message')` 收发消息，统一走 `DrawerHandle` 的 `sendMessage` / `receiveFiles` / `onVisibilityChange` 方法——组件内部会校验消息来源（只接受本抽屉 `iframe.contentWindow` 发来的合规消息），其他消息一律丢弃。
 
 **宿主 → iframe**（组件内部 `iframe.contentWindow.postMessage(msg, iframe 页面 origin)`）：
 
@@ -174,16 +174,16 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，消息格式固定为：
+**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，消息格式固定为**产物文件消息**（`drawer-files`，payload 直接是 `DrawerFile[]`）：
 
 ```js
 {
   source: 'ckc-expert-agent',
-  type: 'drawer-message',
-  payload: { message: '...', files: [{ name, url, type }] }
+  type: 'drawer-files',
+  payload: [{ name: 'report.pdf', url: 'https://...', type: 'pdf' }] // DrawerFile[]
 }
 ```
 
-宿主通过 `drawer.onMessage(handler)` 收到 `payload`；抽屉显隐变化由 `drawer.onVisibilityChange(handler)` 通知宿主（iframe 侧收到的仍是上面的显隐 postMessage）。
+宿主通过 `drawer.receiveFiles(handler)` 接受产物文件（组件只接受本抽屉 iframe 发来的合规文件数组，其他消息一律丢弃）；抽屉显隐变化由 `drawer.onVisibilityChange(handler)` 通知宿主（iframe 侧收到的仍是上面的显隐 postMessage）。
 
-由于关闭抽屉只是隐藏、iframe 不会被销毁，iframe 内容在隐藏期间照常运行，随时可以按上述协议 `postMessage` 出来，宿主的 `onMessage` 照常收到。
+由于关闭抽屉只是隐藏、iframe 不会被销毁，iframe 内容在隐藏期间照常运行，随时可以按上述协议 `postMessage` 出来，宿主的 `receiveFiles` 照常收到。

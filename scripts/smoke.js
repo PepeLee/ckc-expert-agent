@@ -173,10 +173,10 @@ const drawer = createDrawer({
   },
 });
 
-// 收发消息统一走 DrawerHandle 固定方法（sendMessage / onMessage / onVisibilityChange）
-const gotMessages = [];
+// 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / onVisibilityChange）
+const gotFiles = [];
 const gotVisibility = [];
-const offMessage = drawer.onMessage((payload) => gotMessages.push(payload));
+const offFiles = drawer.receiveFiles((files) => gotFiles.push(files));
 drawer.onVisibilityChange((visible) => gotVisibility.push(visible));
 
 // 初始：只有悬浮圆形按钮，抽屉未初始化
@@ -240,44 +240,60 @@ assert.ok(
   toFrame('drawer-message').every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'),
 );
 
-// onMessage：只接受本抽屉 iframe 发来的固定协议 drawer-message
+// receiveFiles（接受产物文件）：只接受本抽屉 iframe 发来的 drawer-files（payload 为 DrawerFile[]）
+const artifactFiles = [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }];
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-message',
-  payload: { message: '收到回复', files: [] },
+  type: 'drawer-files',
+  payload: artifactFiles,
 });
-assert.deepStrictEqual(gotMessages, [{ message: '收到回复', files: [] }]);
+assert.deepStrictEqual(gotFiles, [artifactFiles]);
 
-// 非协议消息 / 非本 iframe 来源 / 非法 payload：一律丢弃
+// 非协议消息 / drawer-message 类型 / 非本 iframe 来源 / 非法 payload：一律丢弃
 dispatchWindowMessage(frame.contentWindow, {
   source: 'other',
-  type: 'drawer-message',
-  payload: { message: 'x', files: [] },
+  type: 'drawer-files',
+  payload: artifactFiles,
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
   type: 'other',
+  payload: artifactFiles,
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message', // receiveFiles 不再接受 drawer-message 类型
+  payload: artifactFiles,
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-files',
   payload: { message: 'x', files: [] },
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-message',
-  payload: { message: 1, files: [] },
+  type: 'drawer-files',
+  payload: [{ name: 1, url: 'u', type: 't' }],
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-files',
+  payload: 'x',
 });
 dispatchWindowMessage(
   {},
-  { source: 'ckc-expert-agent', type: 'drawer-message', payload: { message: 'x', files: [] } },
+  { source: 'ckc-expert-agent', type: 'drawer-files', payload: artifactFiles },
 );
-assert.strictEqual(gotMessages.length, 1, '非协议消息不应派发给 onMessage');
+assert.strictEqual(gotFiles.length, 1, '非法消息不应派发给 receiveFiles');
 
 // 取消监听后不再收到
-offMessage();
+offFiles();
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-message',
-  payload: { message: '不该收到', files: [] },
+  type: 'drawer-files',
+  payload: [{ name: 'other.pdf', url: 'https://example.com/o.pdf', type: 'pdf' }],
 });
-assert.strictEqual(gotMessages.length, 1);
+assert.strictEqual(gotFiles.length, 1);
 
 // 点击抽屉右上角关闭按钮：只隐藏，不销毁
 const closeBtn = drawerHost.shadowRoot.querySelector('.close-btn');
@@ -319,10 +335,10 @@ assert.strictEqual(body.children.length, 0);
 assert.strictEqual(toFrame('drawer-message').length, 2, '销毁后 sendMessage 不再发消息');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-message',
-  payload: { message: 'x', files: [] },
+  type: 'drawer-files',
+  payload: artifactFiles,
 });
-assert.strictEqual(gotMessages.length, 1, '销毁后消息监听已解绑');
+assert.strictEqual(gotFiles.length, 1, '销毁后消息监听已解绑');
 
 // iframe 侧显隐 postMessage：[显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
 const expectedSeq = [true, false, true, false, true, false];

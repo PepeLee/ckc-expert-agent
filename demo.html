@@ -31,7 +31,7 @@
       z-index: 99999 的元素
     </div>
 
-    <h4 style="margin: 24px 0 8px">宿主收到的消息（onMessage / onVisibilityChange）：</h4>
+    <h4 style="margin: 24px 0 8px">宿主收到的消息（receiveFiles / onVisibilityChange）：</h4>
     <div
       id="msg-log"
       style="font-family: Consolas, monospace; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px; max-height: 240px; overflow: auto"
@@ -55,7 +55,7 @@
         },
       });
 
-      // 收发消息统一走 DrawerHandle 固定方法（sendMessage / onMessage / onVisibilityChange），
+      // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / onVisibilityChange），
       // 宿主不需要（也不建议）直接使用 window.postMessage / message 事件
       function logMsg(text) {
         console.log('[host]', text);
@@ -66,9 +66,9 @@
         log.scrollTop = log.scrollHeight;
       }
 
-      // 收 iframe 发来的消息（固定协议 drawer-message）
-      drawer.onMessage(function (payload) {
-        logMsg('iframe 消息: ' + JSON.stringify(payload));
+      // 接受产物文件（iframe 发来的 drawer-files，payload 为 DrawerFile[]）
+      drawer.receiveFiles(function (files) {
+        logMsg('接受产物文件: ' + JSON.stringify(files));
       });
 
       // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）

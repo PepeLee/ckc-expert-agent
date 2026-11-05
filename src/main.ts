@@ -47,8 +47,8 @@ sendBtn.addEventListener('click', () =>
 document.body.appendChild(sendBtn);
 
 // 收发消息统一走 DrawerHandle 固定方法，宿主不直接使用 postMessage / message 事件
-drawer.onMessage((payload) => {
-  console.log('[host] 收到 iframe 消息:', payload);
+drawer.receiveFiles((files) => {
+  console.log('[host] 接受产物文件:', files);
 });
 drawer.onVisibilityChange((visible) => {
   console.log('[host] 抽屉', visible ? '显示' : '隐藏');
