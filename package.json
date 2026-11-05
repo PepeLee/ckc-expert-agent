@@ -1,0 +1,17 @@
+{
+  "name": "ckc-expert-agent",
+  "version": "0.1.0",
+  "private": true,
+  "description": "可嵌入第三方页面的右侧抽屉组件（UMD，可直接放 CDN 使用）",
+  "main": "./dist/ckc-expert-agent.umd.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "npm run build && node scripts/smoke.js"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  }
+}
