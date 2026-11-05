@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>iframe 测试页</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 12px;
+        font: 14px/1.6 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+        color: #1f2329;
+      }
+      h3 {
+        margin: 0 0 8px;
+      }
+      .badge {
+        display: inline-block;
+        margin-left: 8px;
+        padding: 2px 10px;
+        border-radius: 10px;
+        background: #f0f0f0;
+        font-size: 12px;
+        font-weight: normal;
+      }
+      .badge.on {
+        background: #d9f7be;
+      }
+      .badge.off {
+        background: #ffd8bf;
+      }
+      dl {
+        margin: 8px 0;
+      }
+      dt {
+        float: left;
+        width: 90px;
+        clear: left;
+        color: #888;
+      }
+      dd {
+        margin: 0 0 2px 100px;
+        word-break: break-all;
+      }
+      .row {
+        display: flex;
+        gap: 8px;
+        margin: 10px 0;
+      }
+      input {
+        flex: 1;
+        padding: 6px 8px;
+        border: 1px solid #d9d9d9;
+        border-radius: 4px;
+      }
+      button {
+        padding: 6px 12px;
+        cursor: pointer;
+      }
+      #log {
+        max-height: 260px;
+        overflow: auto;
+        margin-top: 12px;
+        padding-top: 8px;
+        border-top: 1px solid #eee;
+        font-family: Consolas, Monaco, monospace;
+        font-size: 12px;
+      }
+      .item {
+        padding: 2px 0;
+        border-bottom: 1px dashed #f5f5f5;
+        word-break: break-all;
+      }
+      .dir-in {
+        color: #1677ff;
+      }
+      .dir-out {
+        color: #52c41a;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>iframe 测试页（模拟 agent 页面）<span id="state" class="badge">抽屉状态：未知</span></h3>
+    <dl id="params"></dl>
+    <div class="row">
+      <input id="text" value="你好，来自 iframe 的消息" />
+      <button id="send">postMessage 发给宿主</button>
+    </div>
+    <div id="log"></div>
+
+    <script>
+      (function () {
+        var paramsEl = document.getElementById('params');
+        var logEl = document.getElementById('log');
+        var stateEl = document.getElementById('state');
+        var input = document.getElementById('text');
+
+        function log(dir, label, data) {
+          var row = document.createElement('div');
+          row.className = 'item';
+          var head = document.createElement('span');
+          head.className = dir === 'in' ? 'dir-in' : 'dir-out';
+          head.textContent =
+            '[' + new Date().toLocaleTimeString() + '] ' + (dir === 'in' ? '收到 ← ' : '发送 → ');
+          row.appendChild(head);
+          row.appendChild(
+            document.createTextNode(label + (data ? ' ' + JSON.stringify(data) : '')),
+          );
+          logEl.appendChild(row);
+          logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        // ---- 展示 URL 参数：/center/thd/chat/:agentCode[/:sessionId]?token=xxx ----
+        var segs = location.pathname.split('/').filter(Boolean);
+        var info = {
+          agentCode: segs[3] || '(无)',
+          sessionId: segs[4] || '(未传)',
+          token: new URLSearchParams(location.search).get('token') || '(无)',
+        };
+        Object.keys(info).forEach(function (k) {
+          var dt = document.createElement('dt');
+          dt.textContent = k + '：';
+          var dd = document.createElement('dd');
+          dd.textContent = info[k];
+          paramsEl.appendChild(dt);
+          paramsEl.appendChild(dd);
+        });
+
+        // ---- 接收容器（组件 / 宿主页）消息 ----
+        window.addEventListener('message', function (e) {
+          var d = e.data;
+          if (!d || d.source !== 'ckc-expert-agent') {
+            log('in', '其他消息', d);
+            return;
+          }
+          if (d.type === 'drawer-init') {
+            log('in', 'drawer-init（预置 payload）', d.payload);
+            // 回执给宿主页，演示双向通信
+            var ack = { source: 'iframe-test', type: 'payload-ack', payload: d.payload };
+            parent.postMessage(ack, '*');
+            log('out', 'payload-ack（回执给宿主）', ack.payload);
+          } else if (d.type === 'drawer-visibility-change') {
+            log('in', '抽屉显隐', { visible: d.visible });
+            stateEl.textContent = d.visible
+              ? '抽屉状态：显示中'
+              : '抽屉状态：已隐藏（iframe 继续运行）';
+            stateEl.className = 'badge ' + (d.visible ? 'on' : 'off');
+          } else {
+            log('in', '组件消息', d);
+          }
+        });
+
+        // ---- 发消息给宿主页 ----
+        document.getElementById('send').addEventListener('click', function () {
+          var msg = { source: 'iframe-test', type: 'chat', text: input.value };
+          parent.postMessage(msg, '*');
+          log('out', 'chat（发给宿主）', msg);
+        });
+
+        // ---- 页面就绪通知 ----
+        parent.postMessage(
+          { source: 'iframe-test', type: 'ready', href: location.href },
+          '*',
+        );
+        log('out', 'ready（页面就绪通知）', null);
+      })();
+    </script>
+  </body>
+</html>

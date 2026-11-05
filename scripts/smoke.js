@@ -259,6 +259,7 @@ const envCases = [
   ['dev', 'http://lf18kg-dev.life.cpic.com'],
   ['sit', 'http://lf18kg-sit.life.cpic.com'],
   ['pro', 'http://lf18kg.life.cpic.com'],
+  ['local', 'http://localhost:4173'],
 ];
 for (const [env, domain] of envCases) {
   const d = createDrawer({ env, token: 't0', agentCode: 'a c0' });

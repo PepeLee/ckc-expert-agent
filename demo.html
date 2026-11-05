@@ -26,6 +26,12 @@
       z-index: 99999 的元素
     </div>
 
+    <h4 style="margin: 24px 0 8px">宿主收到的 postMessage：</h4>
+    <div
+      id="msg-log"
+      style="font-family: Consolas, monospace; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px; max-height: 240px; overflow: auto"
+    ></div>
+
     <!-- 实际接入时把 src 换成 CDN 地址即可 -->
     <script src="./dist/ckc-expert-agent.umd.js"></script>
     <script>
@@ -33,21 +39,26 @@
       // iframe 最终地址：{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}
       // payload 选填，iframe 加载完成后通过 postMessage 传给 iframe
       window.createCkcDrawer({
-        env: 'sit', // 运行环境：dev / sit / pro，决定站点域名
+        env: 'local', // 运行环境：dev / sit / pro / local，决定站点域名（本地联调改为 'local'）
         token: 'demo-token',
         agentCode: 'demo-agent',
-        // sessionId: 'demo-session', // 选填，传入时拼到路径上
+        sessionId: 'demo-session', // 选填，传入时拼到路径上
         payload: {
           message: '你好',
           files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'application/pdf' }],
         },
       });
 
-      // 接收组件的显隐 postMessage
+      // 接收 postMessage：组件显隐消息 + iframe 测试页消息
       window.addEventListener('message', function (e) {
-        if (e.data && e.data.source === 'ckc-expert-agent') {
-          console.log('[host] 收到 postMessage:', e.data);
-        }
+        var d = e.data;
+        if (!d || (d.source !== 'ckc-expert-agent' && d.source !== 'iframe-test')) return;
+        console.log('[host] 收到 postMessage:', d);
+        var line = document.createElement('div');
+        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + JSON.stringify(d);
+        var log = document.getElementById('msg-log');
+        log.appendChild(line);
+        log.scrollTop = log.scrollHeight;
       });
     </script>
   </body>

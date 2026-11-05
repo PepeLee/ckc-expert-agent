@@ -16,11 +16,11 @@ export interface DrawerPayload {
   files: DrawerFile[];
 }
 
-/** 运行环境 */
-export type DrawerEnv = 'dev' | 'sit' | 'pro';
+/** 运行环境（local 用于本地联调） */
+export type DrawerEnv = 'dev' | 'sit' | 'pro' | 'local';
 
 export interface DrawerOptions {
-  /** 运行环境（必填）：dev / sit / pro，决定 iframe 站点域名 */
+  /** 运行环境（必填）：dev / sit / pro / local，决定 iframe 站点域名 */
   env: DrawerEnv;
   /** 鉴权 token（必填），会作为 token 查询参数拼到 iframe 地址上（?token=xxx） */
   token: string;
@@ -71,6 +71,7 @@ const ENV_DOMAINS: Record<DrawerEnv, string> = {
   dev: 'http://lf18kg-dev.life.cpic.com',
   sit: 'http://lf18kg-sit.life.cpic.com',
   pro: 'http://lf18kg.life.cpic.com',
+  local: 'http://localhost:4173',
 };
 const DEFAULT_MIN_WIDTH = 200;
 /** 32 位有符号整数最大值，保证抽屉浮在接入方页面所有内容之上 */
@@ -222,7 +223,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   const domain = options && options.env ? ENV_DOMAINS[options.env] : undefined;
   if (!domain) {
     throw new TypeError(
-      '[ckc-expert-agent] createDrawer: 必须通过 options.env 指定运行环境（dev / sit / pro）',
+      '[ckc-expert-agent] createDrawer: 必须通过 options.env 指定运行环境（dev / sit / pro / local）',
     );
   }
   if (typeof options.token !== 'string' || options.token === '') {

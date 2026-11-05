@@ -23,6 +23,22 @@ npm test        # 构建并运行零依赖冒烟测试（scripts/smoke.js）
 
 构建产物：`dist/ckc-expert-agent.umd.js`（附 sourcemap），把该文件上传到 CDN 即可。
 
+## 本地联调
+
+仓库内置零依赖本地服务器和 iframe 测试页，不依赖 dev/sit/pro 环境即可验证抽屉和 postMessage 双向通信：
+
+```bash
+npm run build        # 先构建 UMD 产物
+npm run test:server  # 启动本地服务 http://localhost:4173
+```
+
+1. 把宿主页（如 [demo.html](demo.html)）里的 `env` 临时改为 `'local'`（指向 `http://localhost:4173`）
+2. 打开 `http://localhost:4173/`，点击悬浮按钮打开抽屉
+3. 抽屉 iframe 加载 `http://localhost:4173/center/thd/chat/:agentCode[/:sessionId]?token=xxx`，由服务器命中 [test/iframe.html](test/iframe.html)
+4. 测试页会展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能向宿主页发 postMessage（宿主页的消息日志同步显示）
+
+注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
+
 ## 接入方式（CDN）
 
 ```html
@@ -79,7 +95,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 | 参数 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
-| `options.env` | `'dev' \| 'sit' \| 'pro'` | （必填） | 运行环境，决定站点域名（见下方映射） |
+| `options.env` | `'dev' \| 'sit' \| 'pro' \| 'local'` | （必填） | 运行环境，决定站点域名（见下方映射） |
 | `options.token` | `string` | （必填） | 鉴权 token，作为 `token` 查询参数拼到 iframe 地址上（`?token=xxx`） |
 | `options.agentCode` | `string` | （必填） | 智能体编码，作为路径段拼到 iframe 地址上（`/center/thd/chat/{agentCode}`） |
 | `options.sessionId` | `string` | 不传 | 会话 ID，传入时拼到路径上（`/center/thd/chat/{agentCode}/{sessionId}`），不传则不拼 |
@@ -95,6 +111,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `dev` | `http://lf18kg-dev.life.cpic.com` |
 | `sit` | `http://lf18kg-sit.life.cpic.com` |
 | `pro` | `http://lf18kg.life.cpic.com` |
+| `local` | `http://localhost:4173`（本地联调） |
 
 返回 `DrawerHandle`：
 
