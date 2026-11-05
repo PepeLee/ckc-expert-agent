@@ -333,6 +333,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let destroyed = false;
   /** iframe 首次加载完成：此前 sendMessage 排队，此后直发 */
   let frameLoaded = false;
+  /** 当前进行中的拖拽收尾函数（左边框调宽 / 悬浮按钮拖动），新拖拽或销毁前强制收尾，防事件丢失卡死 */
+  let activeDragEnd: (() => void) | null = null;
   /** iframe 加载完成前排队的 drawer-message */
   const pendingMessages: DrawerMessage[] = [];
   const fileHandlers = new Set<DrawerFilesHandler>();
@@ -418,32 +420,65 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       }
     });
 
-    // 拖动左边框调整宽度：向左拖变宽，向右拖变窄
+    // 拖动左边框调整宽度：向左拖变宽，向右拖变窄。
+    // 弱网/云桌面下拖拽事件可能丢失，做多层兜底避免拖拽卡死或异常：
+    // 1) 拖拽期间 iframe 置为 pointer-events: none，move/up 不会被跨文档 iframe 吞掉；
+    // 2) move/up 监听挂在 window 上（配合指针捕获），指针移出把手仍能继续；
+    // 3) pointerup 丢失时按 buttons===0 自检收尾，窗口失焦、页面隐藏也强制收尾；
+    // 4) 新拖拽开始/销毁时若上次未收尾，先强制结束。
     resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
+      activeDragEnd?.();
+      const pointerId = e.pointerId;
       const startX = e.clientX;
       const startWidth = host.getBoundingClientRect().width;
+      let ended = false;
       host.classList.add('ckc-drawer--dragging');
-      resizeHandle.setPointerCapture(e.pointerId);
+      // 拖拽期间 iframe 收不到指针事件，保证 move/up 都到达宿主
+      const prevPointerEvents = iframe.style.pointerEvents;
+      iframe.style.pointerEvents = 'none';
+      try {
+        resizeHandle.setPointerCapture(pointerId);
+      } catch {
+        // 个别环境不支持指针捕获，靠 window 监听兜底
+      }
 
-      const onMove = (ev: PointerEvent): void => {
+      function onMove(ev: PointerEvent): void {
+        if (ev.pointerId !== pointerId) return;
+        // pointerup 丢失时 buttons 为 0：主动收尾，避免卡在拖拽状态继续乱调宽度
+        if (ev.buttons === 0) {
+          endDrag();
+          return;
+        }
         width = clamp(startWidth + (startX - ev.clientX), minWidth, maxWidth);
         host.style.width = `${width}px`;
-      };
-      const onUp = (ev: PointerEvent): void => {
+      }
+      function endDrag(): void {
+        if (ended) return;
+        ended = true;
         host.classList.remove('ckc-drawer--dragging');
-        if (resizeHandle.hasPointerCapture(ev.pointerId)) {
-          resizeHandle.releasePointerCapture(ev.pointerId);
+        iframe.style.pointerEvents = prevPointerEvents;
+        if (resizeHandle.hasPointerCapture(pointerId)) {
+          resizeHandle.releasePointerCapture(pointerId);
         }
-        resizeHandle.removeEventListener('pointermove', onMove);
-        resizeHandle.removeEventListener('pointerup', onUp);
-        resizeHandle.removeEventListener('pointercancel', onUp);
-      };
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', endDrag);
+        window.removeEventListener('pointercancel', endDrag);
+        window.removeEventListener('blur', endDrag);
+        document.removeEventListener('visibilitychange', onVisibilityChange);
+        if (activeDragEnd === endDrag) activeDragEnd = null;
+      }
+      function onVisibilityChange(): void {
+        if (document.visibilityState === 'hidden') endDrag();
+      }
 
-      resizeHandle.addEventListener('pointermove', onMove);
-      resizeHandle.addEventListener('pointerup', onUp);
-      resizeHandle.addEventListener('pointercancel', onUp);
+      activeDragEnd = endDrag;
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', endDrag);
+      window.addEventListener('pointercancel', endDrag);
+      window.addEventListener('blur', endDrag);
+      document.addEventListener('visibilitychange', onVisibilityChange);
     });
 
     closeBtn.addEventListener('click', close);
@@ -467,19 +502,35 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     notify(true);
   };
 
-  // 悬浮按钮：拖动可移动位置，单击打开抽屉
+  // 悬浮按钮：拖动可移动位置，单击打开抽屉（拖拽事件丢失兜底同左边框）
   launcherHost.addEventListener('pointerdown', (e: PointerEvent) => {
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
+    activeDragEnd?.();
+    const pointerId = e.pointerId;
     const startX = e.clientX;
     const startY = e.clientY;
     const origX = btnX;
     const origY = btnY;
     let moved = false;
+    let ended = false;
     launcherHost.classList.add('ckc-launcher--dragging');
-    launcherHost.setPointerCapture(e.pointerId);
+    // 拖动期间 iframe 置为 pointer-events: none，move/up 不会被 iframe 吞掉
+    const draggedFrame = frame;
+    const prevPointerEvents = draggedFrame ? draggedFrame.style.pointerEvents : '';
+    if (draggedFrame) draggedFrame.style.pointerEvents = 'none';
+    try {
+      launcherHost.setPointerCapture(pointerId);
+    } catch {
+      // 个别环境不支持指针捕获，靠 window 监听兜底
+    }
 
-    const onMove = (ev: PointerEvent): void => {
+    function onMove(ev: PointerEvent): void {
+      if (ev.pointerId !== pointerId) return;
+      if (ev.buttons === 0) {
+        endDrag(false);
+        return;
+      }
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (!moved && Math.hypot(dx, dy) <= DRAG_THRESHOLD) return;
@@ -487,21 +538,40 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       btnX = clamp(origX + dx, 0, window.innerWidth - LAUNCHER_SIZE);
       btnY = clamp(origY + dy, 0, window.innerHeight - LAUNCHER_SIZE);
       applyBtnPos();
-    };
-    const onUp = (ev: PointerEvent): void => {
+    }
+    function endDrag(isPointerUp: boolean): void {
+      if (ended) return;
+      ended = true;
       launcherHost.classList.remove('ckc-launcher--dragging');
-      if (launcherHost.hasPointerCapture(ev.pointerId)) {
-        launcherHost.releasePointerCapture(ev.pointerId);
+      if (draggedFrame) draggedFrame.style.pointerEvents = prevPointerEvents;
+      if (launcherHost.hasPointerCapture(pointerId)) {
+        launcherHost.releasePointerCapture(pointerId);
       }
-      launcherHost.removeEventListener('pointermove', onMove);
-      launcherHost.removeEventListener('pointerup', onUp);
-      launcherHost.removeEventListener('pointercancel', onUp);
-      if (!moved) open();
-    };
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onCancel);
+      window.removeEventListener('blur', onCancel);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      if (activeDragEnd === onCancel) activeDragEnd = null;
+      // 仅在真正原地松开（pointerup）时视为单击打开抽屉
+      if (!moved && isPointerUp) open();
+    }
+    function onPointerUp(): void {
+      endDrag(true);
+    }
+    function onCancel(): void {
+      endDrag(false);
+    }
+    function onVisibilityChange(): void {
+      if (document.visibilityState === 'hidden') endDrag(false);
+    }
 
-    launcherHost.addEventListener('pointermove', onMove);
-    launcherHost.addEventListener('pointerup', onUp);
-    launcherHost.addEventListener('pointercancel', onUp);
+    activeDragEnd = onCancel;
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onCancel);
+    window.addEventListener('blur', onCancel);
+    document.addEventListener('visibilitychange', onVisibilityChange);
   });
 
   (document.body ?? document.documentElement).appendChild(launcherHost);
@@ -553,6 +623,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     destroy: (): void => {
       if (destroyed) return;
       destroyed = true;
+      activeDragEnd?.();
       if (visible) {
         visible = false;
         notify(false);

@@ -6,7 +6,7 @@
 
 - 默认在页面右下角显示一个**可拖动的圆形悬浮按钮**（拖动可移动位置）
 - **点击悬浮按钮**：初始化并显示右侧抽屉（首次点击时才创建 iframe 并按固定格式加载 `{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}`，域名由 `env` 决定）
-- 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（支持鼠标和触摸）
+- 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（支持鼠标和触摸；弱网/云桌面下拖拽事件丢失时自动兜底收尾，不会卡在拖拽状态）
 - 抽屉右上角有**关闭按钮**：点击只是把抽屉**移出视口**（`transform` 平移隐藏，不销毁 iframe），**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**；再次点击悬浮按钮重新显示
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe、`drawer.receiveFiles()` 接受产物文件、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）

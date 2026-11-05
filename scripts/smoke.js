@@ -95,6 +95,16 @@ global.document = {
   createElement: makeEl,
   body,
   documentElement: body,
+  visibilityState: 'visible',
+  listeners: {},
+  addEventListener(type, fn) {
+    (this.listeners[type] = this.listeners[type] || []).push(fn);
+  },
+  removeEventListener(type, fn) {
+    const arr = this.listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i >= 0) arr.splice(i, 1);
+  },
 };
 global.window = {
   innerWidth: 1280,
@@ -117,10 +127,11 @@ global.window = {
 // ---------- 加载 UMD 产物 ----------
 const { createDrawer } = require(path.join(__dirname, '..', 'dist', 'ckc-expert-agent.umd.js'));
 
-function pointerEvent(x, y) {
+function pointerEvent(x, y, buttons = 1) {
   return {
     pointerType: 'mouse',
     button: 0,
+    buttons,
     pointerId: 1,
     clientX: x,
     clientY: y,
@@ -128,17 +139,27 @@ function pointerEvent(x, y) {
   };
 }
 
+/** 模拟 window 上的任意事件（pointermove / pointerup / blur 等；拖拽监听挂在 window 上兜底） */
+function dispatchWindowEvent(type, ev) {
+  (global.window.listeners[type] || []).slice().forEach((fn) => fn(ev));
+}
+
+/** 模拟 document 的事件（visibilitychange 等） */
+function dispatchDocEvent(type) {
+  (global.document.listeners[type] || []).slice().forEach((fn) => fn());
+}
+
 /** 模拟在悬浮按钮上按下并原地松开（= 点击） */
 function clickLauncher(host) {
   host.listeners.pointerdown[0](pointerEvent(500, 700));
-  host.listeners.pointerup[0](pointerEvent(500, 700));
+  dispatchWindowEvent('pointerup', pointerEvent(500, 700));
 }
 
 /** 模拟在悬浮按钮上按下并水平拖动 dx 后松开（= 拖动） */
 function dragLauncher(host, dx) {
   host.listeners.pointerdown[0](pointerEvent(500, 700));
-  host.listeners.pointermove[0](pointerEvent(500 + dx, 700));
-  host.listeners.pointerup[0](pointerEvent(500 + dx, 700));
+  dispatchWindowEvent('pointermove', pointerEvent(500 + dx, 700));
+  dispatchWindowEvent('pointerup', pointerEvent(500 + dx, 700));
 }
 
 /** 模拟 window 的 message 事件（如 iframe 调用 parent.postMessage 发来的） */
@@ -191,6 +212,13 @@ dragLauncher(launcherHost, 120);
 assert.strictEqual(launcherHost.style.left, '1232px');
 assert.strictEqual(body.children.length, 1);
 assert.strictEqual(drawer.iframe, null);
+
+// 悬浮按钮拖拽同样有事件丢失兜底：pointerup 丢失时 buttons=0 的 move 自动收尾，且不误触发打开
+launcherHost.listeners.pointerdown[0](pointerEvent(500, 700));
+dispatchWindowEvent('pointermove', pointerEvent(560, 700, 0));
+assert.strictEqual(launcherHost.classList.contains('ckc-launcher--dragging'), false);
+assert.strictEqual(launcherHost.style.left, '1232px', '收尾的 move 不应移动按钮');
+assert.strictEqual(body.children.length, 1, '事件丢失收尾不应触发打开抽屉');
 
 // 点击悬浮按钮：初始化并显示抽屉
 clickLauncher(launcherHost);
@@ -356,6 +384,41 @@ assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), false);
 // setWidth
 drawer.setWidth(500);
 assert.strictEqual(drawerHost.style.width, '500px');
+
+// 拖动左边框调整宽度：向左拖变宽；拖拽期间 iframe 置 pointer-events:none，move/up 不会被 iframe 吞掉
+const resizeHandle = drawerHost.shadowRoot.querySelector('.resize-handle');
+resizeHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+assert.strictEqual(frame.style.pointerEvents, 'none');
+dispatchWindowEvent('pointermove', pointerEvent(980, 400));
+assert.strictEqual(drawerHost.style.width, '520px');
+assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), true);
+
+// pointerup 丢失（弱网/云桌面）：下一次 move 的 buttons 为 0 自动收尾，不卡在拖拽状态
+dispatchWindowEvent('pointermove', pointerEvent(960, 400, 0));
+assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
+assert.strictEqual(drawerHost.style.width, '520px');
+assert.ok(!frame.style.pointerEvents, '收尾后恢复 iframe 指针事件');
+dispatchWindowEvent('pointermove', pointerEvent(900, 400));
+assert.strictEqual(drawerHost.style.width, '520px', '收尾后不再响应 move');
+
+// 正常拖拽：宽度按起点绝对值计算（丢 move 不累积误差），pointerup 收尾
+resizeHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(990, 400));
+dispatchWindowEvent('pointerup', pointerEvent(990, 400));
+assert.strictEqual(drawerHost.style.width, '530px');
+assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
+
+// 拖拽中窗口失焦（云桌面切窗口）：强制收尾
+resizeHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('blur', {});
+assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
+
+// 拖拽中页面隐藏（visibilitychange）：强制收尾
+resizeHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+global.document.visibilityState = 'hidden';
+dispatchDocEvent('visibilitychange');
+global.document.visibilityState = 'visible';
+assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
 
 // destroy：悬浮按钮和抽屉全部移除，handle 不再动作
 drawer.destroy();
