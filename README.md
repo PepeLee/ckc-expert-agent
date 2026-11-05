@@ -35,7 +35,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 1. 把宿主页（如 [demo.html](demo.html)）里的 `env` 临时改为 `'local'`（指向 `http://localhost:4173`）
 2. 打开 `http://localhost:4173/`，点击悬浮按钮打开抽屉
 3. 抽屉 iframe 加载 `http://localhost:4173/center/thd/chat/:agentCode[/:sessionId]?token=xxx`，由服务器命中 [test/iframe.html](test/iframe.html)
-4. 测试页会展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能按固定协议发产物文件（`drawer-files`，payload 为 `DrawerFile[]`）给宿主页（宿主页通过 `receiveFiles` 记录，日志同步显示）；未传 `sessionId` 时测试页会生成并回传（`drawer-session`），宿主页通过 `receiveSessionId` 显示
+4. 测试页加载后先发**就绪消息**（`drawer-ready`，宿主收到后才发 `drawer-init`），并展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能按固定协议发产物文件（`drawer-files`，payload 为 `DrawerFile[]`）给宿主页（宿主页通过 `receiveFiles` 记录，日志同步显示）；未传 `sessionId` 时测试页会生成并回传（`drawer-session`），宿主页通过 `receiveSessionId` 显示
 
 注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
 
@@ -136,7 +136,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `open()` | 显示抽屉（首次调用时初始化抽屉并加载 iframe） |
 | `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |
-| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 未加载完自动排队，加载后补发；发送失败也排队，iframe 恢复加载后补发） |
+| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发） |
 | `receiveFiles(handler)` | 接受产物文件：iframe 发来产物文件（`drawer-files`，payload 为 `DrawerFile[]`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
 | `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 |
@@ -148,7 +148,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 **宿主 → iframe**（组件内部 `iframe.contentWindow.postMessage(msg, iframe 页面 origin)`）：
 
-**1. 初始化消息**：传了 `options.payload` 时，iframe **每次**加载完成后发出（iframe 刷新/重新加载后会重新收到）：
+**1. 初始化消息**：传了 `options.payload` 时，iframe 发出 **就绪消息**（见下文第 4 条 `drawer-ready`）后发出（iframe 刷新后再次就绪会重新收到）：
 
 ```js
 {
@@ -178,9 +178,20 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，有两种固定消息。
+**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，有三种固定消息。
 
-**4. 产物文件消息**（`drawer-files`）：payload 直接是 `DrawerFile[]`：
+**4. 就绪消息**（`drawer-ready`）：iframe 页面**初始化完成后必须发出**（不带 payload），宿主以此判定 iframe 加载成功（**不以 `load` 事件判断**）：
+
+```js
+{
+  source: 'ckc-expert-agent',
+  type: 'drawer-ready'
+}
+```
+
+宿主收到后发送 `drawer-init`、当前显隐状态，并补发排队的 `drawer-message`；iframe 刷新/重新初始化后应**再次发送**，宿主会重新补发上述消息。
+
+**5. 产物文件消息**（`drawer-files`）：payload 直接是 `DrawerFile[]`：
 
 ```js
 {
@@ -192,7 +203,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 宿主通过 `drawer.receiveFiles(handler)` 接受产物文件。
 
-**5. sessionId 消息**（`drawer-session`）：宿主在 `DrawerOptions` **未传 `sessionId`** 时，iframe 会生成一个 sessionId 并发出，payload 为该 sessionId 字符串：
+**6. sessionId 消息**（`drawer-session`）：宿主在 `DrawerOptions` **未传 `sessionId`** 时，iframe 会生成一个 sessionId 并发出，payload 为该 sessionId 字符串：
 
 ```js
 {
@@ -208,4 +219,4 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 由于关闭抽屉只是隐藏、iframe 不会被销毁，iframe 内容在隐藏期间照常运行，随时可以按上述协议 `postMessage` 出来，宿主的 `receiveFiles` / `receiveSessionId` 照常收到。
 
-**投递保证**：发往 iframe 的消息（`drawer-init` / `drawer-visibility-change` / `drawer-message`）在 iframe 真正加载成功前不发、只排队；iframe 每次加载完成（含刷新）都会收到 `drawer-init`、当前显隐状态，排队消息按序补发。若 iframe 停在 `about:blank` 或浏览器错误页（如被站点的 `X-Frame-Options` / `Content-Security-Policy: frame-ancestors` 拦截、云桌面网络不通），`postMessage` 会因目标 origin 为 `'null'` 失败——组件内部捕获该异常（不抛给宿主，只 `console.warn`），消息保留待 iframe 恢复加载后补发。若接入方环境始终收不到 `drawer-init`，请检查：① 站点是否允许被内嵌（响应头 `X-Frame-Options` / `frame-ancestors`）；② 宿主所在网络（如云桌面）能否访问对应环境域名；③ 浏览器控制台是否有 iframe 加载被拒绝的报错。
+**投递保证**：iframe 加载是否成功由 iframe 主动发 `drawer-ready` 就绪消息判定（组件**不以 `load` 事件判断**，`about:blank` / 浏览器错误页触发的 `load` 不会误判为成功）；收到就绪消息前，发往 iframe 的消息（`drawer-init` / `drawer-visibility-change` / `drawer-message`）只排队不发送，就绪后按序补发（`drawer-init` → 当前显隐 → 排队消息）。若 `postMessage` 失败（如 iframe 停在 `about:blank` / 浏览器错误页，origin 为 `'null'`），组件内部捕获该异常（不抛给宿主，只 `console.warn`），消息保留待 iframe 重新就绪后补发。若接入方环境始终收不到 `drawer-init`，请检查：① **iframe 页面是否已实现就绪消息（`drawer-ready`）**；② 站点是否允许被内嵌（响应头 `X-Frame-Options` / `Content-Security-Policy: frame-ancestors`）；③ 宿主所在网络（如云桌面）能否访问对应环境域名；④ 浏览器控制台是否有 iframe 加载被拒绝的报错。

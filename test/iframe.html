@@ -110,6 +110,11 @@
           logEl.scrollTop = logEl.scrollHeight;
         }
 
+        // ---- 就绪消息（drawer-ready）：告知宿主（ckc-expert-agent）iframe 页面初始化完成 ----
+        // 宿主以此判定加载成功（不靠 load 事件），收到后才会发 drawer-init / 显隐 / 排队消息
+        parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-ready' }, '*');
+        log('out', 'drawer-ready（告知宿主 iframe 初始化完成）');
+
         // ---- 展示 URL 参数：/center/thd/chat/:agentCode[/:sessionId]?token=xxx ----
         var segs = location.pathname.split('/').filter(Boolean);
         // 宿主未传 sessionId 时，生成一个 sessionId 并发送给宿主（固定协议 drawer-session）

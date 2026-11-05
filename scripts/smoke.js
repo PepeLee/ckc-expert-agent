@@ -239,17 +239,22 @@ assert.strictEqual(
 );
 const frame = drawer.iframe;
 
-// sendMessage 在 iframe 加载完成前调用：排队，加载后补发
+// sendMessage 在 iframe 就绪前调用：排队，就绪后补发
 drawer.sendMessage({ message: '早安', files: [] });
 
 const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
 
-// iframe 加载完成前不发任何消息：发给 about:blank/未加载文档会因 origin 不匹配抛错
+// iframe 就绪前不发任何消息：加载成功由 iframe 发 drawer-ready 判定，不靠 load 事件
 assert.strictEqual(toFrame('drawer-init').length, 0);
 assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
 
-// iframe 加载完成：发预置 payload（drawer-init）+ 当前显隐，再补发排队的 sendMessage
-frame.listeners.load[0]();
+// 非本 iframe 来源 / 非协议来源的就绪消息：忽略，不触发补发
+dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+dispatchWindowMessage(frame.contentWindow, { source: 'other', type: 'drawer-ready' });
+assert.strictEqual(toFrame('drawer-init').length, 0);
+
+// iframe 发来 drawer-ready（就绪消息）：发预置 payload（drawer-init）+ 当前显隐，再补发排队的 sendMessage
+dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
 const initMsg = frameMsgs.find((m) => m.msg.type === 'drawer-init');
 assert.deepStrictEqual(initMsg.msg.payload, {
   message: '你好',
@@ -430,7 +435,7 @@ global.document.visibilityState = 'visible';
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
 
 // postMessage 失败（iframe 停在错误页/沙箱页，origin 为 'null'）：内部吞掉不抛给宿主，
-// 消息排队，iframe 重新加载后补发（复现接入方 "Failed to execute 'postMessage'" 报错场景）
+// 消息排队，iframe 重新就绪后补发（复现接入方 "Failed to execute 'postMessage'" 报错场景）
 const origPost = frame.contentWindow.postMessage;
 frame.contentWindow.postMessage = () => {
   throw new Error("Failed to execute 'postMessage' on 'DOMWindow'");
@@ -441,10 +446,10 @@ assert.doesNotThrow(() => drawer.open());
 frame.contentWindow.postMessage = origPost;
 assert.strictEqual(toFrame('drawer-message').length, 2, '发送失败的消息不计入已发消息');
 
-// iframe 重新加载（刷新/恢复，每个新文档）：重发 drawer-init + 当前显隐，补发失败的 sendMessage
-frame.listeners.load[0]();
-assert.strictEqual(toFrame('drawer-init').length, 2, 'iframe 重新加载后重发 drawer-init');
-assert.strictEqual(toFrame('drawer-message').length, 3, '发送失败的 sendMessage 重新加载后补发');
+// iframe 重新初始化（如刷新后）再次发就绪消息：重发 drawer-init + 当前显隐，补发失败的 sendMessage
+dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.strictEqual(toFrame('drawer-init').length, 2, 'iframe 重新就绪后重发 drawer-init');
+assert.strictEqual(toFrame('drawer-message').length, 3, '发送失败的 sendMessage 就绪后补发');
 assert.deepStrictEqual(toFrame('drawer-message').map((m) => m.msg.payload)[2], {
   message: '弱网时的消息',
   files: [],

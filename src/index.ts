@@ -8,7 +8,7 @@ export interface DrawerFile {
   type: string;
 }
 
-/** 预置数据：iframe 加载完成后通过 postMessage 传给 iframe 内容方 */
+/** 预置数据：iframe 就绪（发 drawer-ready）后通过 postMessage 传给 iframe 内容方 */
 export interface DrawerPayload {
   /** 预置消息 */
   message: string;
@@ -29,7 +29,7 @@ export interface DrawerOptions {
   /** 会话 ID（选填），传入时拼到路径上（/center/thd/chat/{agentCode}/{sessionId}），不传则不拼；
    *  不传时 iframe 会生成 sessionId 并发回，宿主用 receiveSessionId 接收处理 */
   sessionId?: string;
-  /** 预置消息/文件（选填），iframe 加载完成后通过 postMessage 传给 iframe */
+  /** 预置消息/文件（选填），iframe 就绪（发 drawer-ready）后通过 postMessage 传给 iframe */
   payload?: DrawerPayload;
   /** 初始宽度（px），默认 500 */
   width?: number;
@@ -46,7 +46,7 @@ export interface DrawerVisibilityMessage {
   visible: boolean;
 }
 
-/** iframe 每次加载完成后收到的初始化消息（携带预置 payload；iframe 刷新/重新加载后会重新收到） */
+/** iframe 就绪（发 drawer-ready）后收到的初始化消息（携带预置 payload；iframe 重新就绪后会重新收到） */
 export interface DrawerInitMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-init';
@@ -87,6 +87,16 @@ export interface DrawerSessionMessage {
   payload: string;
 }
 
+/**
+ * iframe 发给宿主的就绪消息（type: drawer-ready，不带 payload）：
+ * iframe 页面初始化完成后发出，宿主收到后才认定加载成功并发 drawer-init（不以 load 事件判断）；
+ * iframe 刷新/重新初始化后应再次发送，宿主会重新补发 drawer-init 和当前显隐。
+ */
+export interface DrawerReadyMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-ready';
+}
+
 /** receiveSessionId 回调：接收 iframe 生成的 sessionId */
 export type DrawerSessionHandler = (sessionId: string) => void;
 
@@ -102,7 +112,7 @@ export interface DrawerHandle {
   close(): void;
   /** 设置抽屉宽度（px，自动限制在 min/max 之间） */
   setWidth(width: number): void;
-  /** 向 iframe 发送一条消息（固定协议 drawer-message；iframe 未加载完成时自动排队，加载后按序补发） */
+  /** 向 iframe 发送一条消息（固定协议 drawer-message；iframe 就绪前自动排队，就绪后按序补发） */
   sendMessage(payload: DrawerPayload): void;
   /** 接受产物文件：iframe 发来产物文件（drawer-files，payload 为 DrawerFile[]）时回调，返回取消监听函数 */
   receiveFiles(handler: DrawerFilesHandler): () => void;
@@ -331,11 +341,11 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let frame: HTMLIFrameElement | null = null;
   let visible = false;
   let destroyed = false;
-  /** iframe 首次加载完成：此前 sendMessage 排队，此后直发 */
-  let frameLoaded = false;
+  /** iframe 就绪：已收到 iframe 的 drawer-ready 就绪消息（不以 load 事件判断加载成功）；此前 sendMessage/显隐排队，此后直发 */
+  let frameReady = false;
   /** 当前进行中的拖拽收尾函数（左边框调宽 / 悬浮按钮拖动），新拖拽或销毁前强制收尾，防事件丢失卡死 */
   let activeDragEnd: (() => void) | null = null;
-  /** iframe 加载完成前排队的 drawer-message */
+  /** iframe 就绪前排队、或发送失败待 iframe 重新就绪后补发的 drawer-message */
   const pendingMessages: DrawerMessage[] = [];
   const fileHandlers = new Set<DrawerFilesHandler>();
   const sessionHandlers = new Set<DrawerSessionHandler>();
@@ -343,12 +353,15 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-files / drawer-session 五种，
   // 宿主统一用 sendMessage / receiveFiles / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
-  // 这里只接受本抽屉 iframe 发来的合规产物文件 / sessionId 消息，其余一律丢弃。
+  // 这里只接受本抽屉 iframe 发来的合规就绪 / 产物文件 / sessionId 消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
     if (!frame || e.source !== frame.contentWindow) return;
     const data = e.data as { source?: string; type?: string; payload?: unknown } | null;
     if (!data || data.source !== 'ckc-expert-agent') return;
-    if (data.type === 'drawer-files') {
+    if (data.type === 'drawer-ready') {
+      // iframe 页面初始化完成（刷新/重新初始化后会再次发）：补发 drawer-init、当前显隐和排队消息
+      onFrameReady();
+    } else if (data.type === 'drawer-files') {
       const files = data.payload;
       if (!Array.isArray(files) || !files.every(isDrawerFile)) return;
       for (const handler of [...fileHandlers]) handler(files);
@@ -365,7 +378,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * iframe 可能停在 about:blank / 浏览器错误页（origin 为 'null'，如被 X-Frame-Options / CSP 拦截、
    * 网络不通、iframe 尚未导航完成），此时 postMessage 会抛
    * "The target origin provided ... does not match the recipient window's origin ('null')" 异常；
-   * 这里统一捕获，由 iframe 下次 load 时补发，绝不把异常抛给宿主。
+   * 这里统一捕获，消息保留待 iframe 重新就绪（再发 drawer-ready）后补发，绝不把异常抛给宿主。
    */
   const postToFrame = (
     msg: DrawerInitMessage | DrawerVisibilityMessage | DrawerMessage,
@@ -381,14 +394,40 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     }
   };
 
+  /**
+   * iframe 发来 drawer-ready（就绪消息）后补发一轮：
+   * 1) drawer-init（预置 payload）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
+   * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到初始化数据。
+   */
+  const onFrameReady = (): void => {
+    frameReady = true;
+    if (options.payload) {
+      const msg: DrawerInitMessage = {
+        source: 'ckc-expert-agent',
+        type: 'drawer-init',
+        payload: options.payload,
+      };
+      postToFrame(msg);
+    }
+    postToFrame({
+      source: 'ckc-expert-agent',
+      type: 'drawer-visibility-change',
+      visible,
+    });
+    while (pendingMessages.length > 0) {
+      if (!postToFrame(pendingMessages[0])) break;
+      pendingMessages.shift();
+    }
+  };
+
   const notify = (v: boolean): void => {
     const msg: DrawerVisibilityMessage = {
       source: 'ckc-expert-agent',
       type: 'drawer-visibility-change',
       visible: v,
     };
-    // iframe 未加载完成时不发（发给 about:blank 会因 origin 不匹配抛错），加载后由 load 补发当前状态
-    if (frameLoaded) postToFrame(msg);
+    // iframe 就绪前不发（发给 about:blank 会因 origin 不匹配抛错），就绪时由 onFrameReady 补发当前状态
+    if (frameReady) postToFrame(msg);
     for (const handler of [...visibilityHandlers]) handler(v);
   };
 
@@ -422,30 +461,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     iframe.src = buildFrameSrc(domain, options.token, options.agentCode, options.sessionId);
     panel.appendChild(iframe);
 
-    // iframe 每次加载完成（含刷新/恢复，即每个新文档）都补一轮消息：
-    // 1) drawer-init（预置 payload）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
-    // 若 postMessage 失败（iframe 停在 about:blank/错误页，origin 为 'null'），保留待下次 load 重试。
-    const payload = options.payload;
-    iframe.addEventListener('load', () => {
-      frameLoaded = true;
-      if (payload) {
-        const msg: DrawerInitMessage = {
-          source: 'ckc-expert-agent',
-          type: 'drawer-init',
-          payload,
-        };
-        postToFrame(msg);
-      }
-      postToFrame({
-        source: 'ckc-expert-agent',
-        type: 'drawer-visibility-change',
-        visible,
-      });
-      while (pendingMessages.length > 0) {
-        if (!postToFrame(pendingMessages[0])) break;
-        pendingMessages.shift();
-      }
-    });
+    // iframe 加载成功与否不以 load 事件判断（about:blank/浏览器错误页也会触发 load）：
+    // 由 iframe 页面初始化完成后发 drawer-ready 就绪消息，宿主收到后在 onFrameReady 里统一补发。
 
     // 拖动左边框调整宽度：向左拖变宽，向右拖变窄。
     // 弱网/云桌面下拖拽事件可能丢失，做多层兜底避免拖拽卡死或异常：
@@ -610,12 +627,12 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       type: 'drawer-message',
       payload,
     };
-    // iframe 尚未加载完成或发送失败时排队，iframe 加载完成/恢复后按序补发（上限 100 条，超出丢最旧）
+    // iframe 就绪前或发送失败时排队，iframe 就绪（drawer-ready）后按序补发（上限 100 条，超出丢最旧）
     const enqueue = (): void => {
       if (pendingMessages.length >= 100) pendingMessages.shift();
       pendingMessages.push(msg);
     };
-    if (!frame || !frameLoaded) {
+    if (!frame || !frameReady) {
       enqueue();
       return;
     }
