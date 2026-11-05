@@ -38,7 +38,7 @@ export interface DrawerOptions {
   maxWidth?: number;
 }
 
-/** 抽屉显隐变化时通过 postMessage 发出的消息 */
+/** 抽屉显隐变化时发给 iframe 的消息（宿主侧通过 onVisibilityChange 回调感知） */
 export interface DrawerVisibilityMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-visibility-change';
@@ -52,6 +52,23 @@ export interface DrawerInitMessage {
   payload: DrawerPayload;
 }
 
+/**
+ * 宿主与 iframe 之间收发的业务消息（固定协议 drawer-message）：
+ * 宿主用 drawer.sendMessage() 发出，iframe 用 parent.postMessage 发来同格式消息，
+ * 宿主用 drawer.onMessage() 接收；宿主不要直接使用 window.postMessage / message 事件。
+ */
+export interface DrawerMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-message';
+  payload: DrawerPayload;
+}
+
+/** onMessage 回调：收到 iframe 发来的消息 */
+export type DrawerMessageHandler = (payload: DrawerPayload) => void;
+
+/** onVisibilityChange 回调：抽屉显示/隐藏变化 */
+export type DrawerVisibilityHandler = (visible: boolean) => void;
+
 export interface DrawerHandle {
   /** 抽屉内的 iframe 元素，首次打开抽屉前为 null */
   readonly iframe: HTMLIFrameElement | null;
@@ -61,6 +78,12 @@ export interface DrawerHandle {
   close(): void;
   /** 设置抽屉宽度（px，自动限制在 min/max 之间） */
   setWidth(width: number): void;
+  /** 向 iframe 发送一条消息（固定协议 drawer-message；iframe 未加载完成时自动排队，加载后按序补发） */
+  sendMessage(payload: DrawerPayload): void;
+  /** 监听 iframe 发来的消息（仅接受本抽屉 iframe 发来的合规 drawer-message），返回取消监听函数 */
+  onMessage(handler: DrawerMessageHandler): () => void;
+  /** 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 */
+  onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
   destroy(): void;
 }
@@ -274,6 +297,26 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let drawerHost: HTMLDivElement | null = null;
   let frame: HTMLIFrameElement | null = null;
   let visible = false;
+  let destroyed = false;
+  /** iframe 首次加载完成：此前 sendMessage 排队，此后直发 */
+  let frameLoaded = false;
+  /** iframe 加载完成前排队的 drawer-message */
+  const pendingMessages: DrawerMessage[] = [];
+  const messageHandlers = new Set<DrawerMessageHandler>();
+  const visibilityHandlers = new Set<DrawerVisibilityHandler>();
+
+  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message 三种，
+  // 宿主统一用 sendMessage / onMessage / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
+  // 这里只接受本抽屉 iframe 发来的合规 drawer-message，其余一律丢弃。
+  const onWindowMessage = (e: MessageEvent): void => {
+    if (!frame || e.source !== frame.contentWindow) return;
+    const data = e.data as Partial<DrawerMessage> | null;
+    if (!data || data.source !== 'ckc-expert-agent' || data.type !== 'drawer-message') return;
+    const payload = data.payload;
+    if (!payload || typeof payload.message !== 'string' || !Array.isArray(payload.files)) return;
+    for (const handler of [...messageHandlers]) handler(payload);
+  };
+  window.addEventListener('message', onWindowMessage);
 
   const notify = (v: boolean): void => {
     const msg: DrawerVisibilityMessage = {
@@ -282,11 +325,11 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       visible: v,
     };
     frame?.contentWindow?.postMessage(msg, frameTargetOrigin);
-    window.postMessage(msg, '*');
+    for (const handler of [...visibilityHandlers]) handler(v);
   };
 
   const close = (): void => {
-    if (!visible || !drawerHost) return;
+    if (destroyed || !visible || !drawerHost) return;
     // 只隐藏不销毁：平移出视口（保留布局盒子），iframe 内容继续运行、滚动状态保留
     drawerHost.classList.add('ckc-drawer--hidden');
     drawerHost.inert = true;
@@ -315,22 +358,25 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     iframe.src = buildFrameSrc(domain, options.token, options.agentCode, options.sessionId);
     panel.appendChild(iframe);
 
-    // 预置 payload：iframe 加载完成后通过 postMessage 传给 iframe 内容方
+    // iframe 加载完成后：先发预置 payload（drawer-init），再补发加载前排队的 sendMessage 消息
     const payload = options.payload;
-    if (payload) {
-      iframe.addEventListener(
-        'load',
-        () => {
-          const msg: DrawerInitMessage = {
-            source: 'ckc-expert-agent',
-            type: 'drawer-init',
-            payload,
-          };
-          iframe.contentWindow?.postMessage(msg, frameTargetOrigin);
-        },
-        { once: true },
-      );
-    }
+    let initSent = false;
+    iframe.addEventListener('load', () => {
+      if (initSent) return;
+      initSent = true;
+      frameLoaded = true;
+      if (payload) {
+        const msg: DrawerInitMessage = {
+          source: 'ckc-expert-agent',
+          type: 'drawer-init',
+          payload,
+        };
+        iframe.contentWindow?.postMessage(msg, frameTargetOrigin);
+      }
+      for (const pending of pendingMessages.splice(0)) {
+        iframe.contentWindow?.postMessage(pending, frameTargetOrigin);
+      }
+    });
 
     // 拖动左边框调整宽度：向左拖变宽，向右拖变窄
     resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
@@ -371,7 +417,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   };
 
   const open = (): void => {
-    if (visible) return;
+    if (destroyed || visible) return;
     if (!drawerHost) {
       initDrawer();
     }
@@ -420,6 +466,21 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   (document.body ?? document.documentElement).appendChild(launcherHost);
 
+  const sendMessage = (payload: DrawerPayload): void => {
+    if (destroyed) return;
+    const msg: DrawerMessage = {
+      source: 'ckc-expert-agent',
+      type: 'drawer-message',
+      payload,
+    };
+    // iframe 尚未加载完成时排队，加载后按序补发
+    if (!frame || !frameLoaded) {
+      pendingMessages.push(msg);
+      return;
+    }
+    frame.contentWindow?.postMessage(msg, frameTargetOrigin);
+  };
+
   return {
     get iframe(): HTMLIFrameElement | null {
       return frame;
@@ -430,8 +491,30 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       width = clamp(w, minWidth, maxWidth);
       if (drawerHost) drawerHost.style.width = `${width}px`;
     },
+    sendMessage,
+    onMessage: (handler: DrawerMessageHandler): (() => void) => {
+      messageHandlers.add(handler);
+      return () => {
+        messageHandlers.delete(handler);
+      };
+    },
+    onVisibilityChange: (handler: DrawerVisibilityHandler): (() => void) => {
+      visibilityHandlers.add(handler);
+      return () => {
+        visibilityHandlers.delete(handler);
+      };
+    },
     destroy: (): void => {
-      if (visible) notify(false);
+      if (destroyed) return;
+      destroyed = true;
+      if (visible) {
+        visible = false;
+        notify(false);
+      }
+      window.removeEventListener('message', onWindowMessage);
+      messageHandlers.clear();
+      visibilityHandlers.clear();
+      pendingMessages.length = 0;
       launcherHost.remove();
       drawerHost?.remove();
       drawerHost = null;

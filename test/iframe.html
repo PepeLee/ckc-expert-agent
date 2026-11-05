@@ -84,7 +84,7 @@
     <dl id="params"></dl>
     <div class="row">
       <input id="text" value="你好，来自 iframe 的消息" />
-      <button id="send">postMessage 发给宿主</button>
+      <button id="send">发消息给宿主（drawer-message）</button>
     </div>
     <div id="log"></div>
 
@@ -135,10 +135,12 @@
           }
           if (d.type === 'drawer-init') {
             log('in', 'drawer-init（预置 payload）', d.payload);
-            // 回执给宿主页，演示双向通信
-            var ack = { source: 'iframe-test', type: 'payload-ack', payload: d.payload };
+            // 回执给宿主页，演示双向通信（固定协议 drawer-message）
+            var ack = { source: 'ckc-expert-agent', type: 'drawer-message', payload: d.payload };
             parent.postMessage(ack, '*');
-            log('out', 'payload-ack（回执给宿主）', ack.payload);
+            log('out', 'drawer-message（回执给宿主）', ack.payload);
+          } else if (d.type === 'drawer-message') {
+            log('in', 'drawer-message（宿主 sendMessage）', d.payload);
           } else if (d.type === 'drawer-visibility-change') {
             log('in', '抽屉显隐', { visible: d.visible });
             stateEl.textContent = d.visible
@@ -150,19 +152,25 @@
           }
         });
 
-        // ---- 发消息给宿主页 ----
+        // ---- 发消息给宿主页（固定协议 drawer-message）----
         document.getElementById('send').addEventListener('click', function () {
-          var msg = { source: 'iframe-test', type: 'chat', text: input.value };
+          var msg = {
+            source: 'ckc-expert-agent',
+            type: 'drawer-message',
+            payload: { message: input.value, files: [] },
+          };
           parent.postMessage(msg, '*');
-          log('out', 'chat（发给宿主）', msg);
+          log('out', 'drawer-message（发给宿主）', msg.payload);
         });
 
-        // ---- 页面就绪通知 ----
-        parent.postMessage(
-          { source: 'iframe-test', type: 'ready', href: location.href },
-          '*',
-        );
-        log('out', 'ready（页面就绪通知）', null);
+        // ---- 页面就绪通知（固定协议 drawer-message）----
+        var ready = {
+          source: 'ckc-expert-agent',
+          type: 'drawer-message',
+          payload: { message: 'iframe 页面就绪：' + location.href, files: [] },
+        };
+        parent.postMessage(ready, '*');
+        log('out', 'drawer-message（页面就绪通知）', ready.payload);
       })();
     </script>
   </body>

@@ -19,6 +19,11 @@
     <p>
       <button onclick="drawer.open()">drawer.open() 打开</button>
       <button onclick="drawer.close()">drawer.close() 关闭</button>
+      <button
+        onclick="drawer.sendMessage({ message: '你好', files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }] })"
+      >
+        drawer.sendMessage() 发消息给 iframe
+      </button>
     </p>
     <div
       style="position: fixed; right: 10px; top: 10px; z-index: 99999; background: #ffe58f; padding: 8px 12px"
@@ -26,7 +31,7 @@
       z-index: 99999 的元素
     </div>
 
-    <h4 style="margin: 24px 0 8px">宿主收到的 postMessage：</h4>
+    <h4 style="margin: 24px 0 8px">宿主收到的消息（onMessage / onVisibilityChange）：</h4>
     <div
       id="msg-log"
       style="font-family: Consolas, monospace; font-size: 12px; border-top: 1px solid #eee; padding-top: 8px; max-height: 240px; overflow: auto"
@@ -46,20 +51,29 @@
         sessionId: 'demo-session', // 选填，传入时拼到路径上
         payload: {
           message: '你好',
-          files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'application/pdf' }],
+          files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
         },
       });
 
-      // 接收 postMessage：组件显隐消息 + iframe 测试页消息
-      window.addEventListener('message', function (e) {
-        var d = e.data;
-        if (!d || (d.source !== 'ckc-expert-agent' && d.source !== 'iframe-test')) return;
-        console.log('[host] 收到 postMessage:', d);
+      // 收发消息统一走 DrawerHandle 固定方法（sendMessage / onMessage / onVisibilityChange），
+      // 宿主不需要（也不建议）直接使用 window.postMessage / message 事件
+      function logMsg(text) {
+        console.log('[host]', text);
         var line = document.createElement('div');
-        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + JSON.stringify(d);
+        line.textContent = '[' + new Date().toLocaleTimeString() + '] ' + text;
         var log = document.getElementById('msg-log');
         log.appendChild(line);
         log.scrollTop = log.scrollHeight;
+      }
+
+      // 收 iframe 发来的消息（固定协议 drawer-message）
+      drawer.onMessage(function (payload) {
+        logMsg('iframe 消息: ' + JSON.stringify(payload));
+      });
+
+      // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）
+      drawer.onVisibilityChange(function (visible) {
+        logMsg('抽屉' + (visible ? '显示' : '隐藏'));
       });
     </script>
   </body>

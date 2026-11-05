@@ -35,9 +35,21 @@ destroyBtn.textContent = '彻底销毁';
 destroyBtn.addEventListener('click', () => drawer.destroy());
 document.body.appendChild(destroyBtn);
 
-// 接收组件发出的显隐 postMessage
-window.addEventListener('message', (e: MessageEvent) => {
-  if (e.data?.source === 'ckc-expert-agent') {
-    console.log('[host] 收到 postMessage:', e.data);
-  }
+// 向 iframe 发消息（固定协议 drawer-message，iframe 未加载完自动排队补发）
+const sendBtn = document.createElement('button');
+sendBtn.textContent = 'drawer.sendMessage()';
+sendBtn.addEventListener('click', () =>
+  drawer.sendMessage({
+    message: '你好',
+    files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+  }),
+);
+document.body.appendChild(sendBtn);
+
+// 收发消息统一走 DrawerHandle 固定方法，宿主不直接使用 postMessage / message 事件
+drawer.onMessage((payload) => {
+  console.log('[host] 收到 iframe 消息:', payload);
+});
+drawer.onVisibilityChange((visible) => {
+  console.log('[host] 抽屉', visible ? '显示' : '隐藏');
 });

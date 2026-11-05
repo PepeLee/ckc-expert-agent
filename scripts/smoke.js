@@ -100,6 +100,15 @@ global.window = {
   innerWidth: 1280,
   innerHeight: 800,
   location: { href: 'https://host.example.com/' },
+  listeners: {},
+  addEventListener(type, fn) {
+    (this.listeners[type] = this.listeners[type] || []).push(fn);
+  },
+  removeEventListener(type, fn) {
+    const arr = this.listeners[type] || [];
+    const i = arr.indexOf(fn);
+    if (i >= 0) arr.splice(i, 1);
+  },
   postMessage(msg, targetOrigin) {
     windowMsgs.push({ msg, targetOrigin });
   },
@@ -132,6 +141,11 @@ function dragLauncher(host, dx) {
   host.listeners.pointerup[0](pointerEvent(500 + dx, 700));
 }
 
+/** 模拟 window 的 message 事件（如 iframe 调用 parent.postMessage 发来的） */
+function dispatchWindowMessage(source, data) {
+  (global.window.listeners.message || []).slice().forEach((fn) => fn({ source, data }));
+}
+
 // ---------- 断言 ----------
 
 // window 只挂载 createCkcDrawer，显隐走 DrawerHandle
@@ -158,6 +172,12 @@ const drawer = createDrawer({
     files: [{ name: 'a.png', url: 'https://cdn/a.png', type: 'image/png' }],
   },
 });
+
+// 收发消息统一走 DrawerHandle 固定方法（sendMessage / onMessage / onVisibilityChange）
+const gotMessages = [];
+const gotVisibility = [];
+const offMessage = drawer.onMessage((payload) => gotMessages.push(payload));
+drawer.onVisibilityChange((visible) => gotVisibility.push(visible));
 
 // 初始：只有悬浮圆形按钮，抽屉未初始化
 assert.strictEqual(drawer.iframe, null);
@@ -189,7 +209,10 @@ assert.strictEqual(
 );
 const frame = drawer.iframe;
 
-// 预置 payload：iframe 加载完成后通过 postMessage 传给 iframe
+// sendMessage 在 iframe 加载完成前调用：排队，加载后补发
+drawer.sendMessage({ message: '早安', files: [] });
+
+// iframe 加载完成：先发预置 payload（drawer-init），再补发排队的 sendMessage
 frame.listeners.load[0]();
 const initMsg = frameMsgs.find((m) => m.msg.type === 'drawer-init');
 assert.deepStrictEqual(initMsg.msg.payload, {
@@ -197,6 +220,64 @@ assert.deepStrictEqual(initMsg.msg.payload, {
   files: [{ name: 'a.png', url: 'https://cdn/a.png', type: 'image/png' }],
 });
 assert.strictEqual(initMsg.targetOrigin, 'http://lf18kg-dev.life.cpic.com');
+const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
+assert.deepStrictEqual(
+  toFrame('drawer-message').map((m) => m.msg.payload),
+  [{ message: '早安', files: [] }],
+);
+
+// iframe 加载后 sendMessage：立即直发固定协议消息
+const sendPayload = {
+  message: '你好',
+  files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+};
+drawer.sendMessage(sendPayload);
+assert.deepStrictEqual(
+  toFrame('drawer-message').map((m) => m.msg.payload),
+  [{ message: '早安', files: [] }, sendPayload],
+);
+assert.ok(
+  toFrame('drawer-message').every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'),
+);
+
+// onMessage：只接受本抽屉 iframe 发来的固定协议 drawer-message
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: '收到回复', files: [] },
+});
+assert.deepStrictEqual(gotMessages, [{ message: '收到回复', files: [] }]);
+
+// 非协议消息 / 非本 iframe 来源 / 非法 payload：一律丢弃
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'other',
+  type: 'drawer-message',
+  payload: { message: 'x', files: [] },
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'other',
+  payload: { message: 'x', files: [] },
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: 1, files: [] },
+});
+dispatchWindowMessage(
+  {},
+  { source: 'ckc-expert-agent', type: 'drawer-message', payload: { message: 'x', files: [] } },
+);
+assert.strictEqual(gotMessages.length, 1, '非协议消息不应派发给 onMessage');
+
+// 取消监听后不再收到
+offMessage();
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: '不该收到', files: [] },
+});
+assert.strictEqual(gotMessages.length, 1);
 
 // 点击抽屉右上角关闭按钮：只隐藏，不销毁
 const closeBtn = drawerHost.shadowRoot.querySelector('.close-btn');
@@ -228,26 +309,31 @@ assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), false);
 drawer.setWidth(500);
 assert.strictEqual(drawerHost.style.width, '500px');
 
-// destroy：悬浮按钮和抽屉全部移除
+// destroy：悬浮按钮和抽屉全部移除，handle 不再动作
 drawer.destroy();
 assert.strictEqual(body.children.length, 0);
 assert.strictEqual(drawer.iframe, null);
+drawer.open();
+drawer.sendMessage({ message: 'x', files: [] });
+assert.strictEqual(body.children.length, 0);
+assert.strictEqual(toFrame('drawer-message').length, 2, '销毁后 sendMessage 不再发消息');
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: 'x', files: [] },
+});
+assert.strictEqual(gotMessages.length, 1, '销毁后消息监听已解绑');
 
-// postMessage：显隐变化 [显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
+// iframe 侧显隐 postMessage：[显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
 const expectedSeq = [true, false, true, false, true, false];
 const visibilitySeq = (msgs) =>
   msgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.visible);
-assert.deepStrictEqual(visibilitySeq(windowMsgs), expectedSeq);
 assert.deepStrictEqual(visibilitySeq(frameMsgs), expectedSeq);
-assert.ok(
-  windowMsgs.every(
-    (m) =>
-      m.msg.source === 'ckc-expert-agent' &&
-      m.msg.type === 'drawer-visibility-change' &&
-      m.targetOrigin === '*',
-  ),
-);
 assert.ok(frameMsgs.every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'));
+
+// 宿主侧显隐走 onVisibilityChange 回调（同序），不再向 window 广播原始 postMessage
+assert.deepStrictEqual(gotVisibility, expectedSeq);
+assert.strictEqual(windowMsgs.length, 0, '宿主不再收到原始 postMessage 广播');
 
 // 环境 → 域名映射；不传 sessionId 时不拼该路径段；agentCode 含特殊字符时做路径编码
 const envCases = [
