@@ -48,14 +48,14 @@
         env: 'local', // 运行环境：dev / sit / pro / local，决定站点域名（本地联调改为 'local'）
         token: 'demo-token',
         agentCode: 'demo-agent',
-        sessionId: 'demo-session', // 选填，传入时拼到路径上
+        // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
         payload: {
           message: '你好',
           files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
         },
       });
 
-      // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / onVisibilityChange），
+      // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / receiveSessionId / onVisibilityChange），
       // 宿主不需要（也不建议）直接使用 window.postMessage / message 事件
       function logMsg(text) {
         console.log('[host]', text);
@@ -69,6 +69,11 @@
       // 接受产物文件（iframe 发来的 drawer-files，payload 为 DrawerFile[]）
       drawer.receiveFiles(function (files) {
         logMsg('接受产物文件: ' + JSON.stringify(files));
+      });
+
+      // 接收 iframe 生成的 sessionId（未传 options.sessionId 时 iframe 生成并发出）
+      drawer.receiveSessionId(function (sessionId) {
+        logMsg('收到 sessionId: ' + sessionId);
       });
 
       // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）

@@ -173,10 +173,12 @@ const drawer = createDrawer({
   },
 });
 
-// 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / onVisibilityChange）
+// 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / receiveSessionId / onVisibilityChange）
 const gotFiles = [];
+const gotSessionIds = [];
 const gotVisibility = [];
 const offFiles = drawer.receiveFiles((files) => gotFiles.push(files));
+drawer.receiveSessionId((sessionId) => gotSessionIds.push(sessionId));
 drawer.onVisibilityChange((visible) => gotVisibility.push(visible));
 
 // 初始：只有悬浮圆形按钮，抽屉未初始化
@@ -295,6 +297,36 @@ dispatchWindowMessage(frame.contentWindow, {
 });
 assert.strictEqual(gotFiles.length, 1);
 
+// receiveSessionId（接收 sessionId）：只接受本抽屉 iframe 发来的 drawer-session（payload 为 sessionId 字符串）
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session',
+  payload: 'sess-gen-01',
+});
+assert.deepStrictEqual(gotSessionIds, ['sess-gen-01']);
+
+// 非法 payload / 其他来源 / 非 drawer-session 类型：一律丢弃
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session',
+  payload: '',
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session',
+  payload: 123,
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-files',
+  payload: 'sess-gen-01',
+});
+dispatchWindowMessage(
+  {},
+  { source: 'ckc-expert-agent', type: 'drawer-session', payload: 'sess-gen-01' },
+);
+assert.strictEqual(gotSessionIds.length, 1, '非法消息不应派发给 receiveSessionId');
+
 // 点击抽屉右上角关闭按钮：只隐藏，不销毁
 const closeBtn = drawerHost.shadowRoot.querySelector('.close-btn');
 assert.ok(closeBtn.listeners.click && closeBtn.listeners.click.length === 1);
@@ -339,6 +371,12 @@ dispatchWindowMessage(frame.contentWindow, {
   payload: artifactFiles,
 });
 assert.strictEqual(gotFiles.length, 1, '销毁后消息监听已解绑');
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session',
+  payload: 'sess-gen-02',
+});
+assert.strictEqual(gotSessionIds.length, 1, '销毁后 sessionId 监听已解绑');
 
 // iframe 侧显隐 postMessage：[显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
 const expectedSeq = [true, false, true, false, true, false];

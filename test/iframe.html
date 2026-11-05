@@ -112,9 +112,19 @@
 
         // ---- 展示 URL 参数：/center/thd/chat/:agentCode[/:sessionId]?token=xxx ----
         var segs = location.pathname.split('/').filter(Boolean);
+        // 宿主未传 sessionId 时，生成一个 sessionId 并发送给宿主（固定协议 drawer-session）
+        var sessionId = segs[4];
+        if (!sessionId) {
+          sessionId = 'sess-' + Date.now();
+          parent.postMessage(
+            { source: 'ckc-expert-agent', type: 'drawer-session', payload: sessionId },
+            '*',
+          );
+          log('out', 'drawer-session（生成 sessionId 发给宿主）', sessionId);
+        }
         var info = {
           agentCode: segs[3] || '(无)',
-          sessionId: segs[4] || '(未传)',
+          sessionId: sessionId,
           token: new URLSearchParams(location.search).get('token') || '(无)',
         };
         Object.keys(info).forEach(function (k) {

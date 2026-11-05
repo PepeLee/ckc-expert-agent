@@ -8,7 +8,7 @@ const drawer = createDrawer({
   env: 'dev',
   token: 'demo-token',
   agentCode: 'demo-agent',
-  sessionId: 'demo-session', // 选填，传入时拼到路径上
+  // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
   // 预置数据（选填）：iframe 加载完成后通过 postMessage 传给 iframe
   payload: {
     message: '你好，帮我分析这份报告',
@@ -49,6 +49,10 @@ document.body.appendChild(sendBtn);
 // 收发消息统一走 DrawerHandle 固定方法，宿主不直接使用 postMessage / message 事件
 drawer.receiveFiles((files) => {
   console.log('[host] 接受产物文件:', files);
+});
+// 未传 options.sessionId 时 iframe 会生成 sessionId 并发回，在此接收处理
+drawer.receiveSessionId((sessionId) => {
+  console.log('[host] 收到 iframe 生成的 sessionId:', sessionId);
 });
 drawer.onVisibilityChange((visible) => {
   console.log('[host] 抽屉', visible ? '显示' : '隐藏');

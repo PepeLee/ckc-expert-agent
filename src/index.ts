@@ -26,7 +26,8 @@ export interface DrawerOptions {
   token: string;
   /** 智能体编码（必填），会作为路径段拼到 iframe 地址上（/center/thd/chat/{agentCode}） */
   agentCode: string;
-  /** 会话 ID（选填），传入时拼到路径上（/center/thd/chat/{agentCode}/{sessionId}），不传则不拼 */
+  /** 会话 ID（选填），传入时拼到路径上（/center/thd/chat/{agentCode}/{sessionId}），不传则不拼；
+   *  不传时 iframe 会生成 sessionId 并发回，宿主用 receiveSessionId 接收处理 */
   sessionId?: string;
   /** 预置消息/文件（选填），iframe 加载完成后通过 postMessage 传给 iframe */
   payload?: DrawerPayload;
@@ -75,6 +76,20 @@ export interface DrawerFilesMessage {
 /** receiveFiles 回调：接受 iframe 发来的产物文件 */
 export type DrawerFilesHandler = (files: DrawerFile[]) => void;
 
+/**
+ * iframe 发给宿主的 sessionId 消息（type: drawer-session）：
+ * 宿主未在 DrawerOptions 传 sessionId 时，iframe 生成 sessionId 并发出。
+ */
+export interface DrawerSessionMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-session';
+  /** iframe 生成的 sessionId */
+  payload: string;
+}
+
+/** receiveSessionId 回调：接收 iframe 生成的 sessionId */
+export type DrawerSessionHandler = (sessionId: string) => void;
+
 /** onVisibilityChange 回调：抽屉显示/隐藏变化 */
 export type DrawerVisibilityHandler = (visible: boolean) => void;
 
@@ -91,6 +106,8 @@ export interface DrawerHandle {
   sendMessage(payload: DrawerPayload): void;
   /** 接受产物文件：iframe 发来产物文件（drawer-files，payload 为 DrawerFile[]）时回调，返回取消监听函数 */
   receiveFiles(handler: DrawerFilesHandler): () => void;
+  /** 接收 sessionId：宿主未传 options.sessionId 时 iframe 生成并发出（drawer-session），宿主在此接收处理，返回取消监听函数 */
+  receiveSessionId(handler: DrawerSessionHandler): () => void;
   /** 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 */
   onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
@@ -319,18 +336,25 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   /** iframe 加载完成前排队的 drawer-message */
   const pendingMessages: DrawerMessage[] = [];
   const fileHandlers = new Set<DrawerFilesHandler>();
+  const sessionHandlers = new Set<DrawerSessionHandler>();
   const visibilityHandlers = new Set<DrawerVisibilityHandler>();
 
-  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-files 四种，
-  // 宿主统一用 sendMessage / receiveFiles / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
-  // 这里只接受本抽屉 iframe 发来的合规产物文件消息（drawer-files，payload 为 DrawerFile[]），其余一律丢弃。
+  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-files / drawer-session 五种，
+  // 宿主统一用 sendMessage / receiveFiles / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
+  // 这里只接受本抽屉 iframe 发来的合规产物文件 / sessionId 消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
     if (!frame || e.source !== frame.contentWindow) return;
-    const data = e.data as Partial<DrawerFilesMessage> | null;
-    if (!data || data.source !== 'ckc-expert-agent' || data.type !== 'drawer-files') return;
-    const files = data.payload;
-    if (!Array.isArray(files) || !files.every(isDrawerFile)) return;
-    for (const handler of [...fileHandlers]) handler(files);
+    const data = e.data as { source?: string; type?: string; payload?: unknown } | null;
+    if (!data || data.source !== 'ckc-expert-agent') return;
+    if (data.type === 'drawer-files') {
+      const files = data.payload;
+      if (!Array.isArray(files) || !files.every(isDrawerFile)) return;
+      for (const handler of [...fileHandlers]) handler(files);
+    } else if (data.type === 'drawer-session') {
+      const sessionId = data.payload;
+      if (typeof sessionId !== 'string' || sessionId === '') return;
+      for (const handler of [...sessionHandlers]) handler(sessionId);
+    }
   };
   window.addEventListener('message', onWindowMessage);
 
@@ -514,6 +538,12 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
         fileHandlers.delete(handler);
       };
     },
+    receiveSessionId: (handler: DrawerSessionHandler): (() => void) => {
+      sessionHandlers.add(handler);
+      return () => {
+        sessionHandlers.delete(handler);
+      };
+    },
     onVisibilityChange: (handler: DrawerVisibilityHandler): (() => void) => {
       visibilityHandlers.add(handler);
       return () => {
@@ -529,6 +559,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       }
       window.removeEventListener('message', onWindowMessage);
       fileHandlers.clear();
+      sessionHandlers.clear();
       visibilityHandlers.clear();
       pendingMessages.length = 0;
       launcherHost.remove();
