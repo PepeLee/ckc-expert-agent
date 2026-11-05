@@ -86,9 +86,6 @@ const DRAG_THRESHOLD = 5;
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
 
-/** 最近一次 createDrawer 创建的抽屉，全局显隐方法作用于它 */
-let activeHandle: DrawerHandle | null = null;
-
 /** 生成 iframe 地址：{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token} */
 const buildFrameSrc = (
   domain: string,
@@ -423,7 +420,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   (document.body ?? document.documentElement).appendChild(launcherHost);
 
-  const handle: DrawerHandle = {
+  return {
     get iframe(): HTMLIFrameElement | null {
       return frame;
     },
@@ -439,37 +436,18 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       drawerHost?.remove();
       drawerHost = null;
       frame = null;
-      if (activeHandle === handle) activeHandle = null;
     },
   };
-  activeHandle = handle;
-  return handle;
 }
-
-/** 显示最近一次 createDrawer 创建的抽屉（尚无抽屉时不动作） */
-export const openCkcDrawer = (): void => {
-  activeHandle?.open();
-};
-
-/** 隐藏最近一次 createDrawer 创建的抽屉（不销毁，iframe 继续运行） */
-export const closeCkcDrawer = (): void => {
-  activeHandle?.close();
-};
 
 declare global {
   interface Window {
-    /** 创建页面上的悬浮按钮 + 右侧抽屉 */
+    /** 创建页面上的悬浮按钮 + 右侧抽屉，返回 DrawerHandle 控制显隐 */
     createCkcDrawer: typeof createDrawer;
-    /** 显示最近创建的抽屉 */
-    openCkcDrawer: typeof openCkcDrawer;
-    /** 隐藏最近创建的抽屉 */
-    closeCkcDrawer: typeof closeCkcDrawer;
   }
 }
 
 // 挂到 window 上，供 CDN script 标签接入方直接调用
 if (typeof window !== 'undefined') {
   window.createCkcDrawer = createDrawer;
-  window.openCkcDrawer = openCkcDrawer;
-  window.closeCkcDrawer = closeCkcDrawer;
 }

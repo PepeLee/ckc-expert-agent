@@ -18,15 +18,15 @@ const drawer = createDrawer({
   },
 });
 
-// 全局方法控制显隐：不依赖 createDrawer 返回的 handle，页面任意位置可调用
+// 显隐通过返回的 DrawerHandle 控制
 const openBtn = document.createElement('button');
-openBtn.textContent = 'window.openCkcDrawer()';
-openBtn.addEventListener('click', () => window.openCkcDrawer());
+openBtn.textContent = 'drawer.open()';
+openBtn.addEventListener('click', () => drawer.open());
 document.body.appendChild(openBtn);
 
 const closeBtn = document.createElement('button');
-closeBtn.textContent = 'window.closeCkcDrawer()';
-closeBtn.addEventListener('click', () => window.closeCkcDrawer());
+closeBtn.textContent = 'drawer.close()';
+closeBtn.addEventListener('click', () => drawer.close());
 document.body.appendChild(closeBtn);
 
 // 真正销毁（区别于关闭按钮的“隐藏”）

@@ -17,8 +17,8 @@
     <p>点击右下角悬浮圆形按钮打开抽屉（拖动按钮可移动位置）。</p>
     <p>抽屉左上角的黄色元素用于验证抽屉浮在页面最上方：</p>
     <p>
-      <button onclick="window.openCkcDrawer()">window.openCkcDrawer() 打开</button>
-      <button onclick="window.closeCkcDrawer()">window.closeCkcDrawer() 关闭</button>
+      <button onclick="drawer.open()">drawer.open() 打开</button>
+      <button onclick="drawer.close()">drawer.close() 关闭</button>
     </p>
     <div
       style="position: fixed; right: 10px; top: 10px; z-index: 99999; background: #ffe58f; padding: 8px 12px"
@@ -38,7 +38,8 @@
       // 默认只创建悬浮圆形按钮；点击按钮后初始化抽屉（内容固定为 iframe）
       // iframe 最终地址：{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}
       // payload 选填，iframe 加载完成后通过 postMessage 传给 iframe
-      window.createCkcDrawer({
+      // 显隐通过返回的 DrawerHandle 控制：drawer.open() / drawer.close()
+      var drawer = window.createCkcDrawer({
         env: 'local', // 运行环境：dev / sit / pro / local，决定站点域名（本地联调改为 'local'）
         token: 'demo-token',
         agentCode: 'demo-agent',

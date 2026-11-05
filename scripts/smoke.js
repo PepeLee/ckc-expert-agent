@@ -134,10 +134,10 @@ function dragLauncher(host, dx) {
 
 // ---------- 断言 ----------
 
-// window 挂载
+// window 只挂载 createCkcDrawer，显隐走 DrawerHandle
 assert.strictEqual(typeof global.window.createCkcDrawer, 'function');
-assert.strictEqual(typeof global.window.openCkcDrawer, 'function');
-assert.strictEqual(typeof global.window.closeCkcDrawer, 'function');
+assert.strictEqual(global.window.openCkcDrawer, undefined);
+assert.strictEqual(global.window.closeCkcDrawer, undefined);
 
 // 缺 env / 非法 env / 缺 token / 缺 agentCode 抛错
 assert.throws(() => createDrawer(), /options\.env/);
@@ -207,15 +207,15 @@ assert.strictEqual(drawerHost.inert, true);
 assert.strictEqual(body.children.length, 2, '隐藏后抽屉 DOM 仍应存在');
 assert.strictEqual(drawer.iframe, frame, 'iframe 未重建（内容继续运行）');
 
-// 全局方法 window.openCkcDrawer()：重新显示同一个抽屉
-global.window.openCkcDrawer();
+// DrawerHandle.open()：重新显示同一个抽屉
+drawer.open();
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), false);
 assert.strictEqual(drawerHost.inert, false);
 assert.strictEqual(drawer.iframe, frame);
 assert.strictEqual(iframeCreateCount, 1, '重新显示不应重建 iframe');
 
-// 全局方法 window.closeCkcDrawer()：隐藏（不销毁）
-global.window.closeCkcDrawer();
+// DrawerHandle.close()：隐藏（不销毁）
+drawer.close();
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), true);
 assert.strictEqual(drawerHost.inert, true);
 assert.strictEqual(body.children.length, 2);
@@ -233,12 +233,7 @@ drawer.destroy();
 assert.strictEqual(body.children.length, 0);
 assert.strictEqual(drawer.iframe, null);
 
-// 销毁后全局方法不再动作（也不应报错）
-global.window.openCkcDrawer();
-global.window.closeCkcDrawer();
-assert.strictEqual(body.children.length, 0);
-
-// postMessage：显隐变化 [显示, 隐藏, 全局显示, 全局隐藏, 显示, 销毁时隐藏]
+// postMessage：显隐变化 [显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
 const expectedSeq = [true, false, true, false, true, false];
 const visibilitySeq = (msgs) =>
   msgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.visible);

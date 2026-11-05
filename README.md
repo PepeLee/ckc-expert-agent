@@ -59,33 +59,31 @@ npm run test:server  # 启动本地服务 http://localhost:4173
       ],
     },
   });
+
+  // 显隐通过返回的 DrawerHandle 控制
+  drawer.open();  // 显示（首次调用时初始化 iframe）
+  drawer.close(); // 隐藏（不销毁，iframe 继续运行）
+
+  // 彻底销毁（移除悬浮按钮和抽屉）
+  drawer.destroy();
 </script>
 
-<!-- 页面任意位置都可以用全局方法控制显隐（作用于最近创建的抽屉） -->
-<button onclick="window.openCkcDrawer()">打开</button>
-<button onclick="window.closeCkcDrawer()">关闭</button>
-```
-
-```js
-// 也可以直接用返回的 handle 控制
-drawer.open();
-drawer.close();
-
-// 彻底销毁（移除悬浮按钮和抽屉）
-drawer.destroy();
+<!-- 页面任意位置都可以通过 handle 控制显隐 -->
+<button onclick="drawer.open()">打开</button>
+<button onclick="drawer.close()">关闭</button>
 ```
 
 也支持通过 UMD 全局对象访问：`window.CkcExpertAgent.createDrawer()`（与 `window.createCkcDrawer` 是同一个方法）。
 
 ## window 全局方法
 
+window 上**只挂载一个方法**：
+
 | 方法 | 说明 |
 | --- | --- |
 | `window.createCkcDrawer(options)` | 创建悬浮按钮 + 抽屉，返回 `DrawerHandle` |
-| `window.openCkcDrawer()` | 显示最近创建的抽屉（首次调用时初始化 iframe） |
-| `window.closeCkcDrawer()` | 隐藏最近创建的抽屉（不销毁，iframe 继续运行） |
 
-全局显隐方法作用于**最近一次** `createDrawer` 创建的抽屉；抽屉被 `destroy()` 或尚未创建时不动作。
+打开、关闭等行为不再挂全局方法，统一通过 `createCkcDrawer` 返回的 `DrawerHandle` 控制（见下方 API）。
 
 ## API
 
