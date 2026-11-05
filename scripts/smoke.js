@@ -242,7 +242,13 @@ const frame = drawer.iframe;
 // sendMessage 在 iframe 加载完成前调用：排队，加载后补发
 drawer.sendMessage({ message: '早安', files: [] });
 
-// iframe 加载完成：先发预置 payload（drawer-init），再补发排队的 sendMessage
+const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
+
+// iframe 加载完成前不发任何消息：发给 about:blank/未加载文档会因 origin 不匹配抛错
+assert.strictEqual(toFrame('drawer-init').length, 0);
+assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
+
+// iframe 加载完成：发预置 payload（drawer-init）+ 当前显隐，再补发排队的 sendMessage
 frame.listeners.load[0]();
 const initMsg = frameMsgs.find((m) => m.msg.type === 'drawer-init');
 assert.deepStrictEqual(initMsg.msg.payload, {
@@ -250,7 +256,10 @@ assert.deepStrictEqual(initMsg.msg.payload, {
   files: [{ name: 'a.png', url: 'https://cdn/a.png', type: 'image/png' }],
 });
 assert.strictEqual(initMsg.targetOrigin, 'http://lf18kg-dev.life.cpic.com');
-const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
+assert.deepStrictEqual(
+  toFrame('drawer-visibility-change').map((m) => m.msg.visible),
+  [true],
+);
 assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
   [{ message: '早安', files: [] }],
@@ -420,6 +429,27 @@ dispatchDocEvent('visibilitychange');
 global.document.visibilityState = 'visible';
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
 
+// postMessage 失败（iframe 停在错误页/沙箱页，origin 为 'null'）：内部吞掉不抛给宿主，
+// 消息排队，iframe 重新加载后补发（复现接入方 "Failed to execute 'postMessage'" 报错场景）
+const origPost = frame.contentWindow.postMessage;
+frame.contentWindow.postMessage = () => {
+  throw new Error("Failed to execute 'postMessage' on 'DOMWindow'");
+};
+assert.doesNotThrow(() => drawer.sendMessage({ message: '弱网时的消息', files: [] }));
+assert.doesNotThrow(() => drawer.close());
+assert.doesNotThrow(() => drawer.open());
+frame.contentWindow.postMessage = origPost;
+assert.strictEqual(toFrame('drawer-message').length, 2, '发送失败的消息不计入已发消息');
+
+// iframe 重新加载（刷新/恢复，每个新文档）：重发 drawer-init + 当前显隐，补发失败的 sendMessage
+frame.listeners.load[0]();
+assert.strictEqual(toFrame('drawer-init').length, 2, 'iframe 重新加载后重发 drawer-init');
+assert.strictEqual(toFrame('drawer-message').length, 3, '发送失败的 sendMessage 重新加载后补发');
+assert.deepStrictEqual(toFrame('drawer-message').map((m) => m.msg.payload)[2], {
+  message: '弱网时的消息',
+  files: [],
+});
+
 // destroy：悬浮按钮和抽屉全部移除，handle 不再动作
 drawer.destroy();
 assert.strictEqual(body.children.length, 0);
@@ -427,7 +457,7 @@ assert.strictEqual(drawer.iframe, null);
 drawer.open();
 drawer.sendMessage({ message: 'x', files: [] });
 assert.strictEqual(body.children.length, 0);
-assert.strictEqual(toFrame('drawer-message').length, 2, '销毁后 sendMessage 不再发消息');
+assert.strictEqual(toFrame('drawer-message').length, 3, '销毁后 sendMessage 不再发消息');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
   type: 'drawer-files',
@@ -441,15 +471,25 @@ dispatchWindowMessage(frame.contentWindow, {
 });
 assert.strictEqual(gotSessionIds.length, 1, '销毁后 sessionId 监听已解绑');
 
-// iframe 侧显隐 postMessage：[显示, 隐藏, handle 显示, handle 隐藏, 显示, 销毁时隐藏]
-const expectedSeq = [true, false, true, false, true, false];
+// iframe 侧显隐 postMessage：
+// [首开补发, 关闭按钮, handle 开, handle 关, 再次打开, iframe 重新加载补发当前状态, 销毁时隐藏]
 const visibilitySeq = (msgs) =>
   msgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.visible);
-assert.deepStrictEqual(visibilitySeq(frameMsgs), expectedSeq);
+assert.deepStrictEqual(visibilitySeq(frameMsgs), [true, false, true, false, true, true, false]);
 assert.ok(frameMsgs.every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'));
 
-// 宿主侧显隐走 onVisibilityChange 回调（同序），不再向 window 广播原始 postMessage
-assert.deepStrictEqual(gotVisibility, expectedSeq);
+// 宿主侧显隐走 onVisibilityChange 回调：只在真实变化时触发（重新加载补发不重复回调），
+// 不再向 window 广播原始 postMessage
+assert.deepStrictEqual(gotVisibility, [
+  true, // 首开
+  false, // 关闭按钮
+  true, // handle.open()
+  false, // handle.close()
+  true, // 再次点击悬浮按钮
+  false, // postMessage 失败期间 close()
+  true, // postMessage 失败期间 open()
+  false, // destroy
+]);
 assert.strictEqual(windowMsgs.length, 0, '宿主不再收到原始 postMessage 广播');
 
 // 环境 → 域名映射；不传 sessionId 时不拼该路径段；agentCode 含特殊字符时做路径编码

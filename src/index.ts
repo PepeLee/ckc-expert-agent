@@ -46,7 +46,7 @@ export interface DrawerVisibilityMessage {
   visible: boolean;
 }
 
-/** iframe 加载完成后收到的初始化消息（携带预置 payload） */
+/** iframe 每次加载完成后收到的初始化消息（携带预置 payload；iframe 刷新/重新加载后会重新收到） */
 export interface DrawerInitMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-init';
@@ -360,13 +360,35 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   };
   window.addEventListener('message', onWindowMessage);
 
+  /**
+   * 向 iframe 文档发协议消息，失败不抛错。
+   * iframe 可能停在 about:blank / 浏览器错误页（origin 为 'null'，如被 X-Frame-Options / CSP 拦截、
+   * 网络不通、iframe 尚未导航完成），此时 postMessage 会抛
+   * "The target origin provided ... does not match the recipient window's origin ('null')" 异常；
+   * 这里统一捕获，由 iframe 下次 load 时补发，绝不把异常抛给宿主。
+   */
+  const postToFrame = (
+    msg: DrawerInitMessage | DrawerVisibilityMessage | DrawerMessage,
+  ): boolean => {
+    const target = frame?.contentWindow;
+    if (!target) return false;
+    try {
+      target.postMessage(msg, frameTargetOrigin);
+      return true;
+    } catch (err) {
+      console.warn('[ckc-expert-agent] 向 iframe 发消息失败（iframe 可能未真正加载）：', err);
+      return false;
+    }
+  };
+
   const notify = (v: boolean): void => {
     const msg: DrawerVisibilityMessage = {
       source: 'ckc-expert-agent',
       type: 'drawer-visibility-change',
       visible: v,
     };
-    frame?.contentWindow?.postMessage(msg, frameTargetOrigin);
+    // iframe 未加载完成时不发（发给 about:blank 会因 origin 不匹配抛错），加载后由 load 补发当前状态
+    if (frameLoaded) postToFrame(msg);
     for (const handler of [...visibilityHandlers]) handler(v);
   };
 
@@ -400,12 +422,11 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     iframe.src = buildFrameSrc(domain, options.token, options.agentCode, options.sessionId);
     panel.appendChild(iframe);
 
-    // iframe 加载完成后：先发预置 payload（drawer-init），再补发加载前排队的 sendMessage 消息
+    // iframe 每次加载完成（含刷新/恢复，即每个新文档）都补一轮消息：
+    // 1) drawer-init（预置 payload）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
+    // 若 postMessage 失败（iframe 停在 about:blank/错误页，origin 为 'null'），保留待下次 load 重试。
     const payload = options.payload;
-    let initSent = false;
     iframe.addEventListener('load', () => {
-      if (initSent) return;
-      initSent = true;
       frameLoaded = true;
       if (payload) {
         const msg: DrawerInitMessage = {
@@ -413,10 +434,16 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
           type: 'drawer-init',
           payload,
         };
-        iframe.contentWindow?.postMessage(msg, frameTargetOrigin);
+        postToFrame(msg);
       }
-      for (const pending of pendingMessages.splice(0)) {
-        iframe.contentWindow?.postMessage(pending, frameTargetOrigin);
+      postToFrame({
+        source: 'ckc-expert-agent',
+        type: 'drawer-visibility-change',
+        visible,
+      });
+      while (pendingMessages.length > 0) {
+        if (!postToFrame(pendingMessages[0])) break;
+        pendingMessages.shift();
       }
     });
 
@@ -583,12 +610,16 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       type: 'drawer-message',
       payload,
     };
-    // iframe 尚未加载完成时排队，加载后按序补发
-    if (!frame || !frameLoaded) {
+    // iframe 尚未加载完成或发送失败时排队，iframe 加载完成/恢复后按序补发（上限 100 条，超出丢最旧）
+    const enqueue = (): void => {
+      if (pendingMessages.length >= 100) pendingMessages.shift();
       pendingMessages.push(msg);
+    };
+    if (!frame || !frameLoaded) {
+      enqueue();
       return;
     }
-    frame.contentWindow?.postMessage(msg, frameTargetOrigin);
+    if (!postToFrame(msg)) enqueue();
   };
 
   return {
