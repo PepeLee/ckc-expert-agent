@@ -1,3 +1,5 @@
+import { LAUNCHER_ICON_SVG } from './icon';
+
 /** 附件文件 */
 export interface DrawerFile {
   /** 文件名 */
@@ -183,7 +185,7 @@ const LAUNCHER_STYLES = `
     padding: 0;
     border: 0;
     border-radius: 50%;
-    background: #1677ff;
+    background: transparent;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
     cursor: grab;
     touch-action: none;
@@ -191,6 +193,11 @@ const LAUNCHER_STYLES = `
     align-items: center;
     justify-content: center;
     outline: none;
+  }
+  .btn svg {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
   :host(.ckc-launcher--dragging) .btn {
     cursor: grabbing;
@@ -357,9 +364,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   launcherShadow.innerHTML = `
     <style>${LAUNCHER_STYLES}</style>
     <button class="btn" type="button" aria-label="打开抽屉">
-      <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
-        <path fill="#fff" d="M12 3C6.5 3 2 6.6 2 11c0 2.3 1.2 4.4 3.1 5.8L4.3 20a.7.7 0 0 0 1 .8l3.5-1.7c1 .3 2.1.4 3.2.4 5.5 0 10-3.6 10-8s-4.5-8-10-8z" />
-      </svg>
+      ${LAUNCHER_ICON_SVG}
     </button>
   `;
 
