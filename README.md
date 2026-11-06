@@ -44,7 +44,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 
 ## 接入方式
 
-> 面向接入方（宿主页面 + iframe 内容页开发者）的完整使用文档见 [docs/使用文档.md](docs/使用文档.md)，不含实现细节，可随 `ckc-expert-agent.umd.js` 一起分发。
+> 面向接入方（宿主页面 + iframe 内容页开发者）的完整使用文档见 [docs/小蓝专家接入方案（前端）.md](docs/小蓝专家接入方案（前端）.md)，不含实现细节，可随 `ckc-expert-agent.umd.js` 一起分发。
 
 脚本在各环境的固定地址（与 `options.env` 保持同一环境）：
 
