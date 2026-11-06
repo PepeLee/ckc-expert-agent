@@ -588,8 +588,23 @@ for (const [env, domain] of envCases) {
   const d = createDrawer({ env, token: 't0', agentCode: 'a c0' });
   d.open();
   assert.strictEqual(d.iframe.src, `${domain}/center/thd/chat/a%20c0?token=t0`);
+  assert.strictEqual(body.children.length, 2, '默认不开启遮盖层（悬浮按钮 + 抽屉）');
   d.destroy();
 }
+
+// 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉
+const dm = createDrawer({ env: 'dev', token: 'tm', agentCode: 'am', mask: true });
+dm.open();
+assert.strictEqual(body.children.length, 3, '开启遮盖层后：悬浮按钮 + 遮盖层 + 抽屉');
+const maskEl = body.children[1];
+assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), false, '打开时遮盖层显示');
+maskEl.listeners.click[0](); // 点击遮盖层
+assert.strictEqual(dm.isOpen, false, '点击遮盖层关闭抽屉');
+assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), true, '关闭后遮盖层隐藏');
+dm.open();
+assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), false, '重新打开遮盖层恢复显示');
+dm.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后遮盖层一并移除');
 
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
 const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');

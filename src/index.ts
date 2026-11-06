@@ -39,6 +39,8 @@ export interface DrawerOptions {
   minWidth?: number;
   /** 最大宽度（px），默认视口宽度的 90% */
   maxWidth?: number;
+  /** 抽屉打开时是否给左侧页面区域加遮盖层（默认不开启；开启后点击遮盖层关闭抽屉） */
+  mask?: boolean;
 }
 
 /** 抽屉显隐变化时发给 iframe 的消息（宿主侧通过 onVisibilityChange 回调感知） */
@@ -227,6 +229,26 @@ const LAUNCHER_STYLES = `
   }
 `;
 
+/** 遮盖层（options.mask 开启时）：抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉 */
+const MASK_STYLES = `
+  :host {
+    all: initial;
+    position: fixed;
+    inset: 0;
+    z-index: ${Z_INDEX - 1};
+    display: block;
+  }
+  :host(.ckc-mask--hidden) {
+    display: none;
+  }
+  .mask {
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.45);
+    cursor: pointer;
+  }
+`;
+
 const DRAWER_STYLES = `
   :host {
     all: initial;
@@ -385,6 +407,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   // ---------- 抽屉（首次点击按钮时初始化） ----------
   let drawerHost: HTMLDivElement | null = null;
+  /** 遮盖层（options.mask 开启时创建）：抽屉打开时盖住左侧页面区域 */
+  let maskHost: HTMLDivElement | null = null;
   let frame: HTMLIFrameElement | null = null;
   let visible = false;
   let destroyed = false;
@@ -516,6 +540,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     // 只隐藏不销毁：平移出视口（保留布局盒子），iframe 内容继续运行、滚动状态保留
     drawerHost.classList.add('ckc-drawer--hidden');
     drawerHost.inert = true;
+    maskHost?.classList.add('ckc-mask--hidden');
     visible = false;
     notify(false);
   };
@@ -609,6 +634,19 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       document.addEventListener('visibilitychange', onVisibilityChange);
     });
 
+    // 遮盖层（options.mask，默认不开启）：抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉
+    if (options.mask === true && !maskHost) {
+      const mHost = document.createElement('div');
+      const mShadow = mHost.attachShadow({ mode: 'open' });
+      mShadow.innerHTML = `
+        <style>${MASK_STYLES}</style>
+        <div class="mask"></div>
+      `;
+      mHost.addEventListener('click', close);
+      (document.body ?? document.documentElement).appendChild(mHost);
+      maskHost = mHost;
+    }
+
     host.style.width = `${width}px`;
     (document.body ?? document.documentElement).appendChild(host);
 
@@ -636,6 +674,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     }
     (drawerHost as HTMLDivElement).classList.remove('ckc-drawer--hidden');
     (drawerHost as HTMLDivElement).inert = false;
+    maskHost?.classList.remove('ckc-mask--hidden');
     visible = true;
     notify(true);
   };
@@ -784,6 +823,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       launcherHost.remove();
       drawerHost?.remove();
       drawerHost = null;
+      maskHost?.remove();
+      maskHost = null;
       frame = null;
     },
   };

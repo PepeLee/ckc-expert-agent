@@ -10,6 +10,7 @@
 - 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（支持鼠标和触摸；弱网/云桌面下拖拽事件丢失时自动兜底收尾，不会卡在拖拽状态）
 - 抽屉本身**不带关闭按钮**：iframe 页面在自己的 header 上提供**全屏**和**关闭**按钮，通过固定协议控制抽屉——全屏按钮发 `drawer-fullscreen`（抽屉宽度变为最大值，按钮变为「取消全屏」，再点恢复默认宽度），关闭按钮发 `drawer-close`（只把抽屉**移出视口**，`transform` 平移隐藏、不销毁 iframe，**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**）；再次点击悬浮按钮重新显示，宿主也可用 `drawer.close()` 关闭
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe、`drawer.receiveFiles()` 接受产物文件、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
+- 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页），点击遮盖层关闭抽屉
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -60,6 +61,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
         { name: 'report.pdf', url: 'https://cdn.com/report.pdf', type: 'application/pdf' },
       ],
     },
+    mask: true, // 选填：是否给左侧页面区域加遮盖层（点击遮盖层关闭抽屉）
   });
 
   // 显隐通过返回的 DrawerHandle 控制
@@ -120,6 +122,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.width` | `number` | `500` | 初始宽度（px） |
 | `options.minWidth` | `number` | `200` | 最小宽度（px） |
 | `options.maxWidth` | `number` | 视口宽度的 90% | 最大宽度（px） |
+| `options.mask` | `boolean` | `false` | 抽屉打开时是否给左侧页面区域加遮盖层（半透明遮罩，阻止操作宿主页；开启后点击遮盖层关闭抽屉） |
 
 环境与站点域名映射（域名固化在组件内）：
 
