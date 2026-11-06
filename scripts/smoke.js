@@ -216,6 +216,7 @@ drawer.onVisibilityChange((visible) => gotVisibility.push(visible));
 
 // 初始：只有悬浮圆形按钮，抽屉未初始化
 assert.strictEqual(drawer.iframe, null);
+assert.strictEqual(drawer.isOpen, false, '未初始化时 isOpen 为 false');
 assert.strictEqual(body.children.length, 1);
 
 // 拖动悬浮按钮：只移动位置，不打开抽屉（初始 left=1208，拖 120 后被夹到 1232）
@@ -235,6 +236,7 @@ assert.strictEqual(body.children.length, 1, '事件丢失收尾不应触发打�
 // 点击悬浮按钮：初始化并显示抽屉
 clickLauncher(launcherHost);
 assert.ok(drawer.iframe, '打开后 iframe 应存在');
+assert.strictEqual(drawer.isOpen, true, '打开后 isOpen 为 true');
 assert.strictEqual(iframeCreateCount, 1, 'iframe 只应创建一次');
 assert.strictEqual(body.children.length, 2);
 const drawerHost = body.children[1];
@@ -407,12 +409,14 @@ assert.strictEqual(
 );
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-close' });
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), true);
+assert.strictEqual(drawer.isOpen, false, '关闭后 isOpen 为 false');
 assert.strictEqual(drawerHost.inert, true);
 assert.strictEqual(body.children.length, 2, '隐藏后抽屉 DOM 仍应存在');
 assert.strictEqual(drawer.iframe, frame, 'iframe 未重建（内容继续运行）');
 
 // DrawerHandle.open()：重新显示同一个抽屉
 drawer.open();
+assert.strictEqual(drawer.isOpen, true, 'handle.open() 后 isOpen 为 true');
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), false);
 assert.strictEqual(drawerHost.inert, false);
 assert.strictEqual(drawer.iframe, frame);
@@ -420,6 +424,7 @@ assert.strictEqual(iframeCreateCount, 1, '重新显示不应重建 iframe');
 
 // DrawerHandle.close()：隐藏（不销毁）
 drawer.close();
+assert.strictEqual(drawer.isOpen, false, 'handle.close() 后 isOpen 为 false');
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), true);
 assert.strictEqual(drawerHost.inert, true);
 assert.strictEqual(body.children.length, 2);
@@ -522,6 +527,7 @@ assert.deepStrictEqual(toFrame('drawer-message').map((m) => m.msg.payload)[2], {
 drawer.destroy();
 assert.strictEqual(body.children.length, 0);
 assert.strictEqual(drawer.iframe, null);
+assert.strictEqual(drawer.isOpen, false, '销毁后 isOpen 为 false');
 drawer.open();
 drawer.sendMessage({ message: 'x', files: [] });
 assert.strictEqual(body.children.length, 0);

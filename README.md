@@ -135,6 +135,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | 成员 | 说明 |
 | --- | --- |
 | `iframe` | 抽屉内的 `HTMLIFrameElement`，首次打开抽屉前为 `null` |
+| `isOpen` | 当前抽屉是否处于打开状态（未初始化、已关闭、已销毁时为 `false`） |
 | `open()` | 显示抽屉（首次调用时初始化抽屉并加载 iframe） |
 | `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |

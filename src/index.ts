@@ -129,6 +129,8 @@ export type DrawerVisibilityHandler = (visible: boolean) => void;
 export interface DrawerHandle {
   /** 抽屉内的 iframe 元素，首次打开抽屉前为 null */
   readonly iframe: HTMLIFrameElement | null;
+  /** 当前抽屉是否处于打开状态（未初始化、已关闭、已销毁时为 false） */
+  readonly isOpen: boolean;
   /** 显示抽屉（首次调用时初始化抽屉并加载 iframe） */
   open(): void;
   /** 隐藏抽屉（移出视口但不销毁，iframe 继续运行，滚动条等状态保留） */
@@ -734,6 +736,9 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   return {
     get iframe(): HTMLIFrameElement | null {
       return frame;
+    },
+    get isOpen(): boolean {
+      return visible && !destroyed;
     },
     open,
     close,
