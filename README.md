@@ -1,6 +1,6 @@
 # ckc-expert-agent
 
-可嵌入第三方页面的悬浮抽屉组件。TypeScript + Vite 构建，产物为 UMD 格式 JS，可直接放到 CDN 上通过 `<script>` 标签接入。
+可嵌入第三方页面的悬浮抽屉组件。TypeScript + Vite 构建，产物为 UMD 格式 JS，各环境部署在固定地址，通过 `<script>` 标签接入（见「接入方式」）。
 
 ## 功能与交互
 
@@ -23,7 +23,7 @@ npm run build   # 构建 UMD 产物到 dist/
 npm test        # 构建并运行零依赖冒烟测试（scripts/smoke.js）
 ```
 
-构建产物：`dist/ckc-expert-agent.umd.js`（附 sourcemap），把该文件上传到 CDN 即可。
+构建产物：`dist/ckc-expert-agent.umd.js`（附 sourcemap），部署时上传到各环境站点的 `/center/exts/` 目录（固定脚本地址见「接入方式」）。
 
 ## 本地联调
 
@@ -42,10 +42,21 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 
 注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
 
-## 接入方式（CDN）
+## 接入方式
+
+> 面向接入方（宿主页面 + iframe 内容页开发者）的完整使用文档见 [docs/使用文档.md](docs/使用文档.md)，不含实现细节，可随 `ckc-expert-agent.umd.js` 一起分发。
+
+脚本在各环境的固定地址（与 `options.env` 保持同一环境）：
+
+| 环境 | 脚本地址 |
+| --- | --- |
+| dev | `http://lf18kg-dev.life.cpic.com/center/exts/ckc-expert-agent.umd.js` |
+| sit | `http://lf18kg-sit.life.cpic.com/center/exts/ckc-expert-agent.umd.js` |
+| prod | `http://lf18kg.life.cpic.com/center/exts/ckc-expert-agent.umd.js` |
 
 ```html
-<script src="https://your-cdn.com/ckc-expert-agent.umd.js"></script>
+<!-- 示例：dev 环境；sit / prod 换成上表中对应环境的地址 -->
+<script src="http://lf18kg-dev.life.cpic.com/center/exts/ckc-expert-agent.umd.js"></script>
 <script>
   // 抽屉内容固定为 iframe；调用后页面上出现悬浮圆形按钮
   // iframe 最终地址：{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}
