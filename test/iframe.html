@@ -112,8 +112,11 @@
 
         // ---- 就绪消息（drawer-ready）：告知宿主（ckc-expert-agent）iframe 页面初始化完成 ----
         // 宿主以此判定加载成功（不靠 load 事件），收到后才会发 drawer-init / 显隐 / 排队消息
-        parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-ready' }, '*');
-        log('out', 'drawer-ready（告知宿主 iframe 初始化完成）');
+        // 延迟 3 秒再发，模拟真实场景 iframe 初始化较慢：期间宿主侧应显示加载动画
+        setTimeout(function () {
+          parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-ready' }, '*');
+          log('out', 'drawer-ready（延迟 3 秒发送，模拟真实初始化耗时）');
+        }, 3000);
 
         // ---- 展示 URL 参数：/center/thd/chat/:agentCode[/:sessionId]?token=xxx ----
         var segs = location.pathname.split('/').filter(Boolean);
