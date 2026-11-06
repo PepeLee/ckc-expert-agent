@@ -8,6 +8,7 @@
 'use strict';
 
 const assert = require('assert');
+const fs = require('fs');
 const path = require('path');
 
 // ---------- 最小 DOM / window stub ----------
@@ -127,6 +128,17 @@ global.window = {
 // ---------- 加载 UMD 产物 ----------
 const { createDrawer } = require(path.join(__dirname, '..', 'dist', 'ckc-expert-agent.umd.js'));
 
+// 捕获 setTimeout/clearTimeout：用于手动触发/验证加载动画兜底定时器
+const fakeTimers = [];
+global.setTimeout = (fn, ms) => {
+  fakeTimers.push({ fn, ms, cleared: false });
+  return fakeTimers.length; // 1-based id
+};
+global.clearTimeout = (id) => {
+  const t = fakeTimers[id - 1];
+  if (t) t.cleared = true;
+};
+
 function pointerEvent(x, y, buttons = 1) {
   return {
     pointerType: 'mouse',
@@ -241,6 +253,15 @@ assert.strictEqual(
 assert.strictEqual(drawer.iframe.allow, 'focus');
 const frame = drawer.iframe;
 
+// iframe 就绪前：抽屉内显示加载动画，避免 iframe 初始化慢时长时间空白
+const loader = drawerHost.shadowRoot.querySelector('.loader');
+assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), false);
+
+// 加载动画兜底定时器已武装（超时未就绪也会停止动画，避免一直转圈）
+const loaderTimer = fakeTimers[fakeTimers.length - 1];
+assert.strictEqual(loaderTimer.ms, 10000);
+assert.strictEqual(loaderTimer.cleared, false);
+
 // sendMessage 在 iframe 就绪前调用：排队，就绪后补发
 drawer.sendMessage({ message: '早安', files: [] });
 
@@ -271,6 +292,8 @@ assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
   [{ message: '早安', files: [] }],
 );
+assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), true, '收到 drawer-ready 后隐藏加载动画');
+assert.strictEqual(loaderTimer.cleared, true, '收到 drawer-ready 后取消兜底定时器');
 
 // iframe 加载后 sendMessage：立即直发固定协议消息
 const sendPayload = {
@@ -499,6 +522,17 @@ assert.deepStrictEqual(gotVisibility, [
 ]);
 assert.strictEqual(windowMsgs.length, 0, '宿主不再收到原始 postMessage 广播');
 
+// 加载动画兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息）也会停止动画，不至于一直转圈
+const d2 = createDrawer({ env: 'dev', token: 't0', agentCode: 'a0' });
+d2.open();
+const timer2 = fakeTimers[fakeTimers.length - 1];
+assert.strictEqual(timer2.ms, 10000);
+const loader2 = body.children[1].shadowRoot.querySelector('.loader');
+assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), false);
+timer2.fn(); // 模拟超时
+assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), true, '超时兜底停止加载动画');
+d2.destroy();
+
 // 环境 → 域名映射；不传 sessionId 时不拼该路径段；agentCode 含特殊字符时做路径编码
 const envCases = [
   ['dev', 'http://lf18kg-dev.life.cpic.com'],
@@ -511,6 +545,14 @@ for (const [env, domain] of envCases) {
   d.open();
   assert.strictEqual(d.iframe.src, `${domain}/center/thd/chat/a%20c0?token=t0`);
   d.destroy();
+}
+
+// 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
+const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
+const usedClasses = new Set();
+for (const m of srcText.matchAll(/classList\.(?:add|remove)\('([^']+)'\)/g)) usedClasses.add(m[1]);
+for (const cls of usedClasses) {
+  assert.ok(srcText.includes('.' + cls), `样式缺少 .${cls} 选择器，classList 操作会静默失效`);
 }
 
 console.log('smoke: all assertions passed');

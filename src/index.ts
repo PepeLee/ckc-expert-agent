@@ -141,6 +141,8 @@ const LAUNCHER_SIZE = 48;
 const LAUNCHER_MARGIN = 24;
 /** 位移超过该阈值（px）视为拖动，否则视为点击 */
 const DRAG_THRESHOLD = 5;
+/** 未收到 iframe 的 drawer-ready 就绪消息时，加载动画的最长显示时间（ms）；超时停止动画，避免一直转圈挡住 iframe 内容 */
+const LOADER_FALLBACK_MS = 10000;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
@@ -273,6 +275,39 @@ const DRAWER_STYLES = `
     border: 0;
     background: #ffffff;
   }
+  /* iframe 就绪（drawer-ready）前的加载动画，避免 iframe 初始化慢时抽屉长时间空白 */
+  .loader {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    background: #ffffff;
+    color: #8c8c8c;
+    font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    pointer-events: none;
+  }
+  .ckc-loader--hidden {
+    display: none;
+  }
+  .loader-spinner {
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
+    border: 3px solid #e8e8e8;
+    border-top-color: #1677ff;
+    border-radius: 50%;
+    animation: ckc-loader-spin 0.8s linear infinite;
+  }
+  @keyframes ckc-loader-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 `;
 
 /**
@@ -343,6 +378,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let destroyed = false;
   /** iframe 就绪：已收到 iframe 的 drawer-ready 就绪消息（不以 load 事件判断加载成功）；此前 sendMessage/显隐排队，此后直发 */
   let frameReady = false;
+  /** 加载动画兜底定时器：超时未收到 drawer-ready 时停止动画 */
+  let loaderFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   /** 当前进行中的拖拽收尾函数（左边框调宽 / 悬浮按钮拖动），新拖拽或销毁前强制收尾，防事件丢失卡死 */
   let activeDragEnd: (() => void) | null = null;
   /** iframe 就绪前排队、或发送失败待 iframe 重新就绪后补发的 drawer-message */
@@ -399,8 +436,19 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * 1) drawer-init（预置 payload）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
    * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到初始化数据。
    */
+  /** 隐藏加载动画（iframe 就绪或超时兜底时调用） */
+  const hideLoader = (): void => {
+    drawerHost?.shadowRoot?.querySelector('.loader')?.classList.add('ckc-loader--hidden');
+  };
+
   const onFrameReady = (): void => {
     frameReady = true;
+    // iframe 已就绪：隐藏加载动画（就绪前显示，避免抽屉长时间空白）
+    if (loaderFallbackTimer !== null) {
+      clearTimeout(loaderFallbackTimer);
+      loaderFallbackTimer = null;
+    }
+    hideLoader();
     if (options.payload) {
       const msg: DrawerInitMessage = {
         source: 'ckc-expert-agent',
@@ -448,6 +496,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       <div class="panel">
         <div class="resize-handle"></div>
         <button class="close-btn" type="button" aria-label="关闭抽屉">×</button>
+        <div class="loader">
+          <div class="loader-spinner"></div>
+          <div class="loader-text">加载中…</div>
+        </div>
       </div>
     `;
 
@@ -531,6 +583,18 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
     host.style.width = `${width}px`;
     (document.body ?? document.documentElement).appendChild(host);
+
+    // 加载动画兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息、加载被拦截或网络异常）时，
+    // 停止动画露出 iframe 内容，避免一直转圈挡住整个抽屉
+    loaderFallbackTimer = setTimeout(() => {
+      loaderFallbackTimer = null;
+      if (frameReady) return;
+      hideLoader();
+      console.warn(
+        '[ckc-expert-agent] 超时未收到 iframe 的 drawer-ready 就绪消息，已停止加载动画；' +
+          "若 iframe 内容仍为空，请确认 iframe 页面已在初始化完成后发送 { source: 'ckc-expert-agent', type: 'drawer-ready' }",
+      );
+    }, LOADER_FALLBACK_MS);
 
     drawerHost = host;
     frame = iframe;
@@ -674,6 +738,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       if (destroyed) return;
       destroyed = true;
       activeDragEnd?.();
+      if (loaderFallbackTimer !== null) {
+        clearTimeout(loaderFallbackTimer);
+        loaderFallbackTimer = null;
+      }
       if (visible) {
         visible = false;
         notify(false);
