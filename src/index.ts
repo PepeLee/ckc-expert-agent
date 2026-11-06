@@ -458,6 +458,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     const iframe = document.createElement('iframe');
     iframe.className = 'frame';
     iframe.title = 'ckc-expert-agent';
+    // Permissions Policy：允许 iframe 内页面获取焦点（allow="focus"）
+    iframe.allow = 'focus';
     iframe.src = buildFrameSrc(domain, options.token, options.agentCode, options.sessionId);
     panel.appendChild(iframe);
 

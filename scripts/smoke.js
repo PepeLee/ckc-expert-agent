@@ -237,6 +237,8 @@ assert.strictEqual(
   drawer.iframe.src,
   'http://lf18kg-dev.life.cpic.com/center/thd/chat/agent-01/sess-01?token=abc123',
 );
+// iframe 带 allow="focus"（允许 iframe 内页面获取焦点）
+assert.strictEqual(drawer.iframe.allow, 'focus');
 const frame = drawer.iframe;
 
 // sendMessage 在 iframe 就绪前调用：排队，就绪后补发
