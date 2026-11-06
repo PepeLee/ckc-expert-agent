@@ -14,6 +14,21 @@
       h3 {
         margin: 0 0 8px;
       }
+      header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 8px;
+      }
+      header h3 {
+        margin: 0;
+      }
+      .actions {
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
       .badge {
         display: inline-block;
         margin-left: 8px;
@@ -80,7 +95,13 @@
     </style>
   </head>
   <body>
-    <h3>iframe 测试页（模拟 agent 页面）<span id="state" class="badge">抽屉状态：未知</span></h3>
+    <header>
+      <h3>iframe 测试页（模拟 agent 页面）<span id="state" class="badge">抽屉状态：未知</span></h3>
+      <div class="actions">
+        <button id="fs-btn" type="button">全屏</button>
+        <button id="close-btn" type="button">关闭</button>
+      </div>
+    </header>
     <dl id="params"></dl>
     <div class="row">
       <input id="text" value="分析报告.pdf" />
@@ -187,6 +208,30 @@
             '*',
           );
           log('out', '产物文件（发给宿主）', files);
+        });
+
+        // ---- header 上的全屏按钮：固定协议 drawer-fullscreen，宿主组件据此调整抽屉宽度 ----
+        // 全屏（fullscreen: true）→ 抽屉宽度变为最大值，按钮变为「取消全屏」；
+        // 取消全屏（fullscreen: false）→ 抽屉宽度恢复默认值
+        var fullscreen = false;
+        var fsBtn = document.getElementById('fs-btn');
+        fsBtn.addEventListener('click', function () {
+          fullscreen = !fullscreen;
+          parent.postMessage(
+            { source: 'ckc-expert-agent', type: 'drawer-fullscreen', fullscreen: fullscreen },
+            '*',
+          );
+          fsBtn.textContent = fullscreen ? '取消全屏' : '全屏';
+          log('out', fullscreen ? 'drawer-fullscreen（请求全屏）' : 'drawer-fullscreen（取消全屏）', {
+            fullscreen: fullscreen,
+          });
+        });
+
+        // ---- header 上的关闭按钮：固定协议 drawer-close，与原抽屉关闭按钮功能一致 ----
+        // 宿主收到后只隐藏抽屉（移出视口，不销毁），iframe 继续运行
+        document.getElementById('close-btn').addEventListener('click', function () {
+          parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-close' }, '*');
+          log('out', 'drawer-close（请求关闭抽屉）');
         });
       })();
     </script>

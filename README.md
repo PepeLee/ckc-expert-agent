@@ -8,7 +8,7 @@
 - **点击悬浮按钮**：初始化并显示右侧抽屉（首次点击时才创建 iframe 并按固定格式加载 `{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}`，域名由 `env` 决定）
 - 抽屉显示后先展示**加载动画**（转圈 +「加载中…」），iframe 发来就绪消息（`drawer-ready`）后消失，避免 iframe 初始化慢时抽屉长时间空白；若 10 秒仍未收到就绪消息（iframe 页面未实现该消息、加载被拦截等），自动停止动画露出 iframe 内容并在控制台提示
 - 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（支持鼠标和触摸；弱网/云桌面下拖拽事件丢失时自动兜底收尾，不会卡在拖拽状态）
-- 抽屉右上角有**关闭按钮**：点击只是把抽屉**移出视口**（`transform` 平移隐藏，不销毁 iframe），**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**；再次点击悬浮按钮重新显示
+- 抽屉本身**不带关闭按钮**：iframe 页面在自己的 header 上提供**全屏**和**关闭**按钮，通过固定协议控制抽屉——全屏按钮发 `drawer-fullscreen`（抽屉宽度变为最大值，按钮变为「取消全屏」，再点恢复默认宽度），关闭按钮发 `drawer-close`（只把抽屉**移出视口**，`transform` 平移隐藏、不销毁 iframe，**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**）；再次点击悬浮按钮重新显示，宿主也可用 `drawer.close()` 关闭
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe、`drawer.receiveFiles()` 接受产物文件、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
@@ -37,6 +37,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 2. 打开 `http://localhost:4173/`，点击悬浮按钮打开抽屉
 3. 抽屉 iframe 加载 `http://localhost:4173/center/thd/chat/:agentCode[/:sessionId]?token=xxx`，由服务器命中 [test/iframe.html](test/iframe.html)
 4. 测试页加载后先发**就绪消息**（`drawer-ready`，宿主收到后才发 `drawer-init`），并展示 URL 参数（agentCode / sessionId / token）、记录收到的 `drawer-init` payload 和显隐消息，也能按固定协议发产物文件（`drawer-files`，payload 为 `DrawerFile[]`）给宿主页（宿主页通过 `receiveFiles` 记录，日志同步显示）；未传 `sessionId` 时测试页会生成并回传（`drawer-session`），宿主页通过 `receiveSessionId` 显示
+5. 测试页 header 上有**全屏**和**关闭**按钮：全屏按钮发 `drawer-fullscreen` 让抽屉宽度变为最大值（再点变回「取消全屏」恢复默认宽度），关闭按钮发 `drawer-close` 关闭抽屉（只隐藏不销毁），可直接体验这两个控制消息的效果
 
 注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
 
@@ -140,7 +141,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发） |
 | `receiveFiles(handler)` | 接受产物文件：iframe 发来产物文件（`drawer-files`，payload 为 `DrawerFile[]`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
-| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 |
+| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数 |
 | `destroy()` | 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 |
 
 ## 消息协议（固定）
@@ -159,7 +160,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**2. 显隐消息**：抽屉**显示/隐藏**时（含抽屉内关闭按钮触发的隐藏）：
+**2. 显隐消息**：抽屉**显示/隐藏**时（含 iframe 内发 `drawer-close` 触发的隐藏）：
 
 ```js
 {
@@ -179,7 +180,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，有三种固定消息。
+**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，有五种固定消息（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
 
 **4. 就绪消息**（`drawer-ready`）：iframe 页面**初始化完成后必须发出**（不带 payload），宿主以此判定 iframe 加载成功（**不以 `load` 事件判断**）：
 
@@ -215,6 +216,29 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 ```
 
 宿主通过 `drawer.receiveSessionId(handler)` 接收处理（如持久化下来，下次调用 `createCkcDrawer` 时通过 `options.sessionId` 传入续接同一会话）。
+
+**7. 全屏消息**（`drawer-fullscreen`）：iframe 页面（如 header 上的全屏按钮）请求调整抽屉宽度时发出：
+
+```js
+{
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: true // true=全屏（抽屉宽度变为最大值 maxWidth），false=取消全屏（恢复默认宽度 options.width，未传则 500）
+}
+```
+
+组件内部消费该消息直接调整抽屉宽度，不派发给宿主回调；`fullscreen` 非布尔值时忽略。
+
+**8. 关闭消息**（`drawer-close`）：iframe 页面（如 header 上的关闭按钮）请求关闭抽屉时发出（不带 payload）：
+
+```js
+{
+  source: 'ckc-expert-agent',
+  type: 'drawer-close'
+}
+```
+
+组件内部消费该消息，行为与 `drawer.close()` 一致：只隐藏抽屉（移出视口，不销毁），iframe 继续运行；宿主的 `onVisibilityChange` 会收到 `false`。
 
 组件只接受本抽屉 `iframe.contentWindow` 发来的合规消息，其他消息一律丢弃；抽屉显隐变化由 `drawer.onVisibilityChange(handler)` 通知宿主（iframe 侧收到的仍是上面的显隐 postMessage）。
 

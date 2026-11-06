@@ -394,10 +394,18 @@ dispatchWindowMessage(
 );
 assert.strictEqual(gotSessionIds.length, 1, '非法消息不应派发给 receiveSessionId');
 
-// 点击抽屉右上角关闭按钮：只隐藏，不销毁
-const closeBtn = drawerHost.shadowRoot.querySelector('.close-btn');
-assert.ok(closeBtn.listeners.click && closeBtn.listeners.click.length === 1);
-closeBtn.listeners.click[0]();
+// 抽屉不再有右上角关闭按钮（由 iframe 页 header 上的关闭按钮发 drawer-close 消息替代）
+assert.ok(!drawerHost.shadowRoot.innerHTML.includes('close-btn'), '抽屉内不应再有关闭按钮');
+
+// iframe 发 drawer-close（header 关闭按钮）：只隐藏，不销毁（与原关闭按钮功能一致）
+dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-close' });
+dispatchWindowMessage(frame.contentWindow, { source: 'other', type: 'drawer-close' });
+assert.strictEqual(
+  drawerHost.classList.contains('ckc-drawer--hidden'),
+  false,
+  '非本 iframe 来源 / 非协议来源的关闭消息应忽略',
+);
+dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-close' });
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), true);
 assert.strictEqual(drawerHost.inert, true);
 assert.strictEqual(body.children.length, 2, '隐藏后抽屉 DOM 仍应存在');
@@ -459,6 +467,36 @@ dispatchDocEvent('visibilitychange');
 global.document.visibilityState = 'visible';
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
 
+// iframe 发 drawer-fullscreen（header 全屏按钮）：宽度调整为最大值 / 恢复默认值
+assert.strictEqual(drawerHost.style.width, '530px', '前置：当前宽度为拖拽后的 530px');
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: true,
+});
+assert.strictEqual(drawerHost.style.width, '1152px', '全屏 = 最大宽度（默认视口 90%）');
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: false,
+});
+assert.strictEqual(drawerHost.style.width, '500px', '取消全屏 = 恢复默认宽度');
+// 非法 payload（fullscreen 非布尔）/ 非本 iframe 来源 / 非协议来源：一律忽略
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: 'yes',
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+});
+dispatchWindowMessage(
+  {},
+  { source: 'ckc-expert-agent', type: 'drawer-fullscreen', fullscreen: true },
+);
+assert.strictEqual(drawerHost.style.width, '500px', '非法全屏消息不应改变宽度');
+
 // postMessage 失败（iframe 停在错误页/沙箱页，origin 为 'null'）：内部吞掉不抛给宿主，
 // 消息排队，iframe 重新就绪后补发（复现接入方 "Failed to execute 'postMessage'" 报错场景）
 const origPost = frame.contentWindow.postMessage;
@@ -502,7 +540,7 @@ dispatchWindowMessage(frame.contentWindow, {
 assert.strictEqual(gotSessionIds.length, 1, '销毁后 sessionId 监听已解绑');
 
 // iframe 侧显隐 postMessage：
-// [首开补发, 关闭按钮, handle 开, handle 关, 再次打开, iframe 重新加载补发当前状态, 销毁时隐藏]
+// [首开补发, iframe 发 drawer-close, handle 开, handle 关, 再次打开, iframe 重新加载补发当前状态, 销毁时隐藏]
 const visibilitySeq = (msgs) =>
   msgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.visible);
 assert.deepStrictEqual(visibilitySeq(frameMsgs), [true, false, true, false, true, true, false]);

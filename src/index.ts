@@ -99,6 +99,27 @@ export interface DrawerReadyMessage {
   type: 'drawer-ready';
 }
 
+/**
+ * iframe 发给宿主的全屏消息（type: drawer-fullscreen）：
+ * fullscreen: true 时抽屉宽度调整为最大值（maxWidth），false 时恢复默认宽度（options.width，未传则 500）。
+ * 由组件内部消费（调整抽屉宽度），不派发给宿主回调。
+ */
+export interface DrawerFullscreenMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-fullscreen';
+  fullscreen: boolean;
+}
+
+/**
+ * iframe 发给宿主的关闭消息（type: drawer-close）：
+ * 与抽屉上原来的关闭按钮行为一致——只隐藏抽屉（移出视口），不销毁，iframe 继续运行。
+ * 由组件内部消费，不派发给宿主回调。
+ */
+export interface DrawerCloseMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-close';
+}
+
 /** receiveSessionId 回调：接收 iframe 生成的 sessionId */
 export type DrawerSessionHandler = (sessionId: string) => void;
 
@@ -120,7 +141,7 @@ export interface DrawerHandle {
   receiveFiles(handler: DrawerFilesHandler): () => void;
   /** 接收 sessionId：宿主未传 options.sessionId 时 iframe 生成并发出（drawer-session），宿主在此接收处理，返回取消监听函数 */
   receiveSessionId(handler: DrawerSessionHandler): () => void;
-  /** 监听抽屉显示/隐藏变化（含抽屉内关闭按钮触发的隐藏），返回取消监听函数 */
+  /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数 */
   onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
   destroy(): void;
@@ -255,26 +276,6 @@ const DRAWER_STYLES = `
     user-select: none;
     cursor: ew-resize;
   }
-  .close-btn {
-    position: absolute;
-    top: 8px;
-    right: 8px;
-    z-index: 2;
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: rgba(0, 0, 0, 0.06);
-    color: #1f2329;
-    font-size: 18px;
-    line-height: 28px;
-    text-align: center;
-    cursor: pointer;
-  }
-  .close-btn:hover {
-    background: rgba(0, 0, 0, 0.12);
-  }
   .frame {
     display: block;
     width: 100%;
@@ -320,7 +321,9 @@ const DRAWER_STYLES = `
 /**
  * 在当前页面创建一个可拖动的悬浮圆形按钮。
  * 点击按钮初始化并显示右侧抽屉（内容为加载固定格式地址的 iframe）；
- * 点击抽屉右上角关闭按钮只是隐藏抽屉，iframe 不会被销毁、继续运行；
+ * 抽屉本身不带关闭按钮，iframe 页面通过固定协议控制抽屉：
+ * 发 drawer-fullscreen 调整抽屉宽度（最大值/默认值），发 drawer-close 关闭抽屉
+ * （关闭只是隐藏，iframe 不会被销毁、继续运行），也可由宿主通过 handle.close() 关闭；
  * 再次点击悬浮按钮可重新显示抽屉。
  * 抽屉以 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不会污染接入方页面。
  */
@@ -348,6 +351,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     Math.min(options.maxWidth ?? window.innerWidth * 0.9, window.innerWidth),
   );
   let width = clamp(options.width ?? DEFAULT_WIDTH, minWidth, maxWidth);
+  /** 默认宽度：取消全屏（drawer-fullscreen: false）时恢复到的初始宽度 */
+  const initialWidth = width;
 
   // iframe 内容方接收 postMessage 的目标 origin，推导失败时退回 '*'
   let frameTargetOrigin = '*';
@@ -393,12 +398,24 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   const sessionHandlers = new Set<DrawerSessionHandler>();
   const visibilityHandlers = new Set<DrawerVisibilityHandler>();
 
-  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-files / drawer-session 五种，
+  /** 设置抽屉宽度（px，自动限制在 min/max 之间），drawer-fullscreen 与 handle.setWidth 共用 */
+  const applyWidth = (w: number): void => {
+    width = clamp(w, minWidth, maxWidth);
+    if (drawerHost) drawerHost.style.width = `${width}px`;
+  };
+
+  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-ready /
+  // drawer-files / drawer-session / drawer-fullscreen / drawer-close 八种，
   // 宿主统一用 sendMessage / receiveFiles / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
-  // 这里只接受本抽屉 iframe 发来的合规就绪 / 产物文件 / sessionId 消息，其余一律丢弃。
+  // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
     if (!frame || e.source !== frame.contentWindow) return;
-    const data = e.data as { source?: string; type?: string; payload?: unknown } | null;
+    const data = e.data as {
+      source?: string;
+      type?: string;
+      payload?: unknown;
+      fullscreen?: unknown;
+    } | null;
     if (!data || data.source !== 'ckc-expert-agent') return;
     if (data.type === 'drawer-ready') {
       // iframe 页面初始化完成（刷新/重新初始化后会再次发）：补发 drawer-init、当前显隐和排队消息
@@ -411,6 +428,14 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       const sessionId = data.payload;
       if (typeof sessionId !== 'string' || sessionId === '') return;
       for (const handler of [...sessionHandlers]) handler(sessionId);
+    } else if (data.type === 'drawer-fullscreen') {
+      // iframe 内全屏按钮：true 调到最大宽度，false 恢复默认宽度（组件内部消费，不派发给宿主回调）
+      const fullscreen = data.fullscreen;
+      if (typeof fullscreen !== 'boolean') return;
+      applyWidth(fullscreen ? maxWidth : initialWidth);
+    } else if (data.type === 'drawer-close') {
+      // iframe 内关闭按钮：与原抽屉关闭按钮一致，只隐藏不销毁
+      close();
     }
   };
   window.addEventListener('message', onWindowMessage);
@@ -500,7 +525,6 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       <style>${DRAWER_STYLES}</style>
       <div class="panel">
         <div class="resize-handle"></div>
-        <button class="close-btn" type="button" aria-label="关闭抽屉">×</button>
         <div class="loader">
           <div class="loader-spinner"></div>
           <div class="loader-text">加载中…</div>
@@ -510,7 +534,6 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
     const panel = shadow.querySelector('.panel') as HTMLDivElement;
     const resizeHandle = shadow.querySelector('.resize-handle') as HTMLDivElement;
-    const closeBtn = shadow.querySelector('.close-btn') as HTMLButtonElement;
 
     const iframe = document.createElement('iframe');
     iframe.className = 'frame';
@@ -583,8 +606,6 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       window.addEventListener('blur', endDrag);
       document.addEventListener('visibilitychange', onVisibilityChange);
     });
-
-    closeBtn.addEventListener('click', close);
 
     host.style.width = `${width}px`;
     (document.body ?? document.documentElement).appendChild(host);
@@ -717,8 +738,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     open,
     close,
     setWidth: (w: number): void => {
-      width = clamp(w, minWidth, maxWidth);
-      if (drawerHost) drawerHost.style.width = `${width}px`;
+      applyWidth(w);
     },
     sendMessage,
     receiveFiles: (handler: DrawerFilesHandler): (() => void) => {
