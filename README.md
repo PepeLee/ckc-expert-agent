@@ -130,7 +130,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.token` | `string` | （必填） | 鉴权 token，作为 `token` 查询参数拼到 iframe 地址上（`?token=xxx`） |
 | `options.agentCode` | `string` | （必填） | 智能体编码，作为路径段拼到 iframe 地址上（`/center/thd/chat/{agentCode}`） |
 | `options.sessionId` | `string` | 不传 | 会话 ID，传入时拼到路径上（`/center/thd/chat/{agentCode}/{sessionId}`），不传则不拼；**不传时 iframe 会生成 sessionId 并发回**（`receiveSessionId` 接收） |
-| `options.payload` | `{ message: string; files: {name, url, type}[]; [key: string]: any }` | 不传 | 预置消息/文件（可附带其它自定义字段），iframe 加载完成后通过 postMessage 传给 iframe |
+| `options.payload` | `{ message: string; files: {name, url, type}[] }` | 不传 | 预置消息/文件，iframe 加载完成后通过 postMessage 传给 iframe |
 | `options.width` | `number` | `500` | 初始宽度（px） |
 | `options.minWidth` | `number` | `200` | 最小宽度（px） |
 | `options.maxWidth` | `number` | 视口宽度的 90% | 最大宽度（px） |
@@ -154,7 +154,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `open()` | 显示抽屉（首次调用时初始化抽屉并加载 iframe） |
 | `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |
-| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files, ...}`；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发） |
+| `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发） |
 | `receiveMessage(handler)` | 接收消息：iframe 发来业务消息（`drawer-message`，payload 为 `{message, files, ...其它附带字段}`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
 | `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数 |
@@ -186,13 +186,13 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**3. 业务消息（双向）**：宿主调用 `drawer.sendMessage(payload)` 时发给 iframe；iframe 发同样结构的消息给宿主时，由 `drawer.receiveMessage(handler)` 接收。payload 中除 `message`（字符串）/ `files`（`DrawerFile[]`）外可任意附带其它字段，原样透传；结构不合规的消息一律丢弃：
+**3. 业务消息（双向）**：宿主调用 `drawer.sendMessage(payload)` 时发给 iframe，payload 为 `{message, files}`；iframe 发同类型消息给宿主时由 `drawer.receiveMessage(handler)` 接收，payload 为 `{message, files, ...其它附带字段}`（附带字段原样透传；`message` 不是字符串或 `files` 不是 `DrawerFile[]` 的消息一律丢弃）：
 
 ```js
 {
   source: 'ckc-expert-agent',
   type: 'drawer-message',
-  payload: { message: '...', files: [{ name, url, type }], ... /* 其它附带字段 */ }
+  payload: { message: '...', files: [{ name, url, type }] } // iframe → 宿主时可附带其它字段
 }
 ```
 

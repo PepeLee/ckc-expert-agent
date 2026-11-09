@@ -10,13 +10,17 @@ export interface DrawerFile {
   type: string;
 }
 
-/** 业务消息数据（预置数据 / 宿主与 iframe 双向收发） */
+/** 业务消息数据（预置数据 / 宿主发送给 iframe 的消息） */
 export interface DrawerPayload {
-  /** 消息文本 */
+  /** 预置消息 */
   message: string;
   /** 附件文件列表 */
   files: DrawerFile[];
-  /** 其它附带字段：业务方可自定义附加数据，原样透传 */
+}
+
+/** receiveMessage 回调收到的消息：在 DrawerPayload 基础上可附带其它自定义字段，原样透传 */
+export interface DrawerMessagePayload extends DrawerPayload {
+  /** 其它附带字段：iframe 侧自定义附加数据，原样透传 */
   [key: string]: any;
 }
 
@@ -61,8 +65,8 @@ export interface DrawerInitMessage {
 
 /**
  * 业务消息（固定协议 drawer-message，双向）：
- * 宿主经 drawer.sendMessage() 发给 iframe；iframe 也可发给宿主，由 drawer.receiveMessage() 接收。
- * payload 为 DrawerPayload（message + files + 其它附带字段）。
+ * 宿主经 drawer.sendMessage() 发给 iframe（payload 为 DrawerPayload：{message, files}）；
+ * iframe 也可发给宿主（payload 为 DrawerMessagePayload：{message, files, ...其它附带字段}），由 drawer.receiveMessage() 接收。
  */
 export interface DrawerMessage {
   source: 'ckc-expert-agent';
@@ -71,7 +75,7 @@ export interface DrawerMessage {
 }
 
 /** receiveMessage 回调：接收 iframe 发来的业务消息（{message, files, ...其它附带字段}） */
-export type DrawerMessageHandler = (message: DrawerPayload) => void;
+export type DrawerMessageHandler = (message: DrawerMessagePayload) => void;
 
 /**
  * iframe 发给宿主的 sessionId 消息（type: drawer-session）：
@@ -450,7 +454,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       ) {
         return;
       }
-      for (const handler of [...messageHandlers]) handler(msg as DrawerPayload);
+      for (const handler of [...messageHandlers]) handler(msg as DrawerMessagePayload);
     } else if (data.type === 'drawer-session') {
       const sessionId = data.payload;
       if (typeof sessionId !== 'string' || sessionId === '') return;
