@@ -47,8 +47,8 @@ sendBtn.addEventListener('click', () =>
 document.body.appendChild(sendBtn);
 
 // 收发消息统一走 DrawerHandle 固定方法，宿主不直接使用 postMessage / message 事件
-drawer.receiveFiles((files) => {
-  console.log('[host] 接受产物文件:', files);
+drawer.receiveMessage((message) => {
+  console.log('[host] 收到消息:', message);
 });
 // 未传 options.sessionId 时 iframe 会生成 sessionId 并发回，在此接收处理
 drawer.receiveSessionId((sessionId) => {

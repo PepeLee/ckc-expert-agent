@@ -206,11 +206,11 @@ const drawer = createDrawer({
   },
 });
 
-// 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveFiles / receiveSessionId / onVisibilityChange）
-const gotFiles = [];
+// 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveMessage / receiveSessionId / onVisibilityChange）
+const gotMessages = [];
 const gotSessionIds = [];
 const gotVisibility = [];
-const offFiles = drawer.receiveFiles((files) => gotFiles.push(files));
+const offMessage = drawer.receiveMessage((message) => gotMessages.push(message));
 drawer.receiveSessionId((sessionId) => gotSessionIds.push(sessionId));
 drawer.onVisibilityChange((visible) => gotVisibility.push(visible));
 
@@ -311,60 +311,74 @@ assert.ok(
   toFrame('drawer-message').every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'),
 );
 
-// receiveFiles（接受产物文件）：只接受本抽屉 iframe 发来的 drawer-files（payload 为 DrawerFile[]）
-const artifactFiles = [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }];
+// receiveMessage（接收消息）：只接受本抽屉 iframe 发来的 drawer-message（payload 为 {message, files, ...其它附带字段}）
+const artifactMsg = {
+  message: '分析完成',
+  files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+  score: 95, // 其它附带字段，原样透传
+};
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-files',
-  payload: artifactFiles,
+  type: 'drawer-message',
+  payload: artifactMsg,
 });
-assert.deepStrictEqual(gotFiles, [artifactFiles]);
+assert.deepStrictEqual(gotMessages, [artifactMsg]);
 
-// 非协议消息 / drawer-message 类型 / 非本 iframe 来源 / 非法 payload：一律丢弃
+// 非协议消息 / 非法 payload / 非本 iframe 来源：一律丢弃
 dispatchWindowMessage(frame.contentWindow, {
   source: 'other',
-  type: 'drawer-files',
-  payload: artifactFiles,
+  type: 'drawer-message',
+  payload: artifactMsg,
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
   type: 'other',
-  payload: artifactFiles,
+  payload: artifactMsg,
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-message', // receiveFiles 不再接受 drawer-message 类型
-  payload: artifactFiles,
+  type: 'drawer-files', // 旧产物文件类型已废弃，不再接受
+  payload: artifactMsg.files,
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-files',
-  payload: { message: 'x', files: [] },
+  type: 'drawer-message',
+  payload: artifactMsg.files, // 旧 DrawerFile[] 形态不是 {message, files}
 });
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-files',
-  payload: [{ name: 1, url: 'u', type: 't' }],
-});
-dispatchWindowMessage(frame.contentWindow, {
-  source: 'ckc-expert-agent',
-  type: 'drawer-files',
+  type: 'drawer-message',
   payload: 'x',
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { files: [] }, // 缺 message
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: 123, files: [] }, // message 不是字符串
+});
+dispatchWindowMessage(frame.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-message',
+  payload: { message: 'x', files: [{ name: 1, url: 'u', type: 't' }] }, // files 含非法条目
 });
 dispatchWindowMessage(
   {},
-  { source: 'ckc-expert-agent', type: 'drawer-files', payload: artifactFiles },
+  { source: 'ckc-expert-agent', type: 'drawer-message', payload: artifactMsg },
 );
-assert.strictEqual(gotFiles.length, 1, '非法消息不应派发给 receiveFiles');
+assert.strictEqual(gotMessages.length, 1, '非法消息不应派发给 receiveMessage');
 
 // 取消监听后不再收到
-offFiles();
+offMessage();
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-files',
-  payload: [{ name: 'other.pdf', url: 'https://example.com/o.pdf', type: 'pdf' }],
+  type: 'drawer-message',
+  payload: { message: 'x', files: [] },
 });
-assert.strictEqual(gotFiles.length, 1);
+assert.strictEqual(gotMessages.length, 1);
 
 // receiveSessionId（接收 sessionId）：只接受本抽屉 iframe 发来的 drawer-session（payload 为 sessionId 字符串）
 dispatchWindowMessage(frame.contentWindow, {
@@ -534,10 +548,10 @@ assert.strictEqual(body.children.length, 0);
 assert.strictEqual(toFrame('drawer-message').length, 3, '销毁后 sendMessage 不再发消息');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
-  type: 'drawer-files',
-  payload: artifactFiles,
+  type: 'drawer-message',
+  payload: artifactMsg,
 });
-assert.strictEqual(gotFiles.length, 1, '销毁后消息监听已解绑');
+assert.strictEqual(gotMessages.length, 1, '销毁后消息监听已解绑');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
   type: 'drawer-session',

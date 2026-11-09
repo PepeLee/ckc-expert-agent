@@ -10,12 +10,14 @@ export interface DrawerFile {
   type: string;
 }
 
-/** 预置数据：iframe 就绪（发 drawer-ready）后通过 postMessage 传给 iframe 内容方 */
+/** 业务消息数据（预置数据 / 宿主与 iframe 双向收发） */
 export interface DrawerPayload {
-  /** 预置消息 */
+  /** 消息文本 */
   message: string;
   /** 附件文件列表 */
   files: DrawerFile[];
+  /** 其它附带字段：业务方可自定义附加数据，原样透传 */
+  [key: string]: any;
 }
 
 /** 运行环境（local 用于本地联调） */
@@ -58,8 +60,9 @@ export interface DrawerInitMessage {
 }
 
 /**
- * 宿主发给 iframe 的业务消息（固定协议 drawer-message，由 drawer.sendMessage() 发出）：
- * 宿主不要直接使用 window.postMessage / message 事件。
+ * 业务消息（固定协议 drawer-message，双向）：
+ * 宿主经 drawer.sendMessage() 发给 iframe；iframe 也可发给宿主，由 drawer.receiveMessage() 接收。
+ * payload 为 DrawerPayload（message + files + 其它附带字段）。
  */
 export interface DrawerMessage {
   source: 'ckc-expert-agent';
@@ -67,18 +70,8 @@ export interface DrawerMessage {
   payload: DrawerPayload;
 }
 
-/**
- * iframe 发给宿主的产物文件消息（type: drawer-files）：
- * payload 格式为 DrawerFile[]，宿主用 drawer.receiveFiles() 接受产物文件。
- */
-export interface DrawerFilesMessage {
-  source: 'ckc-expert-agent';
-  type: 'drawer-files';
-  payload: DrawerFile[];
-}
-
-/** receiveFiles 回调：接受 iframe 发来的产物文件 */
-export type DrawerFilesHandler = (files: DrawerFile[]) => void;
+/** receiveMessage 回调：接收 iframe 发来的业务消息（{message, files, ...其它附带字段}） */
+export type DrawerMessageHandler = (message: DrawerPayload) => void;
 
 /**
  * iframe 发给宿主的 sessionId 消息（type: drawer-session）：
@@ -141,8 +134,8 @@ export interface DrawerHandle {
   setWidth(width: number): void;
   /** 向 iframe 发送一条消息（固定协议 drawer-message；iframe 就绪前自动排队，就绪后按序补发） */
   sendMessage(payload: DrawerPayload): void;
-  /** 接受产物文件：iframe 发来产物文件（drawer-files，payload 为 DrawerFile[]）时回调，返回取消监听函数 */
-  receiveFiles(handler: DrawerFilesHandler): () => void;
+  /** 接收消息：iframe 发来业务消息（drawer-message，payload 为 {message, files, ...其它附带字段}）时回调，返回取消监听函数 */
+  receiveMessage(handler: DrawerMessageHandler): () => void;
   /** 接收 sessionId：宿主未传 options.sessionId 时 iframe 生成并发出（drawer-session），宿主在此接收处理，返回取消监听函数 */
   receiveSessionId(handler: DrawerSessionHandler): () => void;
   /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数 */
@@ -420,7 +413,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let activeDragEnd: (() => void) | null = null;
   /** iframe 就绪前排队、或发送失败待 iframe 重新就绪后补发的 drawer-message */
   const pendingMessages: DrawerMessage[] = [];
-  const fileHandlers = new Set<DrawerFilesHandler>();
+  const messageHandlers = new Set<DrawerMessageHandler>();
   const sessionHandlers = new Set<DrawerSessionHandler>();
   const visibilityHandlers = new Set<DrawerVisibilityHandler>();
 
@@ -430,9 +423,9 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (drawerHost) drawerHost.style.width = `${width}px`;
   };
 
-  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message / drawer-ready /
-  // drawer-files / drawer-session / drawer-fullscreen / drawer-close 八种，
-  // 宿主统一用 sendMessage / receiveFiles / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
+  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message（双向） /
+  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 七种，
+  // 宿主统一用 sendMessage / receiveMessage / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
   // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
     if (!frame || e.source !== frame.contentWindow) return;
@@ -446,10 +439,18 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (data.type === 'drawer-ready') {
       // iframe 页面初始化完成（刷新/重新初始化后会再次发）：补发 drawer-init、当前显隐和排队消息
       onFrameReady();
-    } else if (data.type === 'drawer-files') {
-      const files = data.payload;
-      if (!Array.isArray(files) || !files.every(isDrawerFile)) return;
-      for (const handler of [...fileHandlers]) handler(files);
+    } else if (data.type === 'drawer-message') {
+      // iframe 发来的业务消息：{message, files, ...其它附带字段}，校验后原样派发给 receiveMessage
+      const msg = data.payload as Partial<DrawerPayload> | null;
+      if (
+        !msg ||
+        typeof msg.message !== 'string' ||
+        !Array.isArray(msg.files) ||
+        !msg.files.every(isDrawerFile)
+      ) {
+        return;
+      }
+      for (const handler of [...messageHandlers]) handler(msg as DrawerPayload);
     } else if (data.type === 'drawer-session') {
       const sessionId = data.payload;
       if (typeof sessionId !== 'string' || sessionId === '') return;
@@ -785,10 +786,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       applyWidth(w);
     },
     sendMessage,
-    receiveFiles: (handler: DrawerFilesHandler): (() => void) => {
-      fileHandlers.add(handler);
+    receiveMessage: (handler: DrawerMessageHandler): (() => void) => {
+      messageHandlers.add(handler);
       return () => {
-        fileHandlers.delete(handler);
+        messageHandlers.delete(handler);
       };
     },
     receiveSessionId: (handler: DrawerSessionHandler): (() => void) => {
@@ -816,7 +817,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
         notify(false);
       }
       window.removeEventListener('message', onWindowMessage);
-      fileHandlers.clear();
+      messageHandlers.clear();
       sessionHandlers.clear();
       visibilityHandlers.clear();
       pendingMessages.length = 0;

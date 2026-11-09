@@ -105,7 +105,7 @@
     <dl id="params"></dl>
     <div class="row">
       <input id="text" value="分析报告.pdf" />
-      <button id="send">发产物文件给宿主（DrawerFile[]）</button>
+      <button id="send">发消息给宿主（{message, files, ...}）</button>
     </div>
     <div id="log"></div>
 
@@ -174,13 +174,14 @@
           }
           if (d.type === 'drawer-init') {
             log('in', 'drawer-init（预置 payload）', d.payload);
-            // 把预置的文件作为产物文件回执给宿主页，演示 receiveFiles（payload 为 DrawerFile[]）
-            var files = (d.payload && d.payload.files) || [];
-            parent.postMessage(
-              { source: 'ckc-expert-agent', type: 'drawer-files', payload: files },
-              '*',
-            );
-            log('out', '产物文件（回执给宿主）', files);
+            // 把预置内容作为消息回执给宿主页，演示 receiveMessage（{message, files, ...其它附带字段}）
+            var reply = {
+              message: '已收到预置消息',
+              files: (d.payload && d.payload.files) || [],
+              ts: Date.now(), // 其它附带字段，原样透传
+            };
+            parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-message', payload: reply }, '*');
+            log('out', '消息（回执给宿主）', reply);
           } else if (d.type === 'drawer-message') {
             log('in', 'drawer-message（宿主 sendMessage）', d.payload);
           } else if (d.type === 'drawer-visibility-change') {
@@ -194,20 +195,24 @@
           }
         });
 
-        // ---- 发产物文件给宿主页（固定协议 drawer-files，payload 为 DrawerFile[]）----
+        // ---- 发消息给宿主页（固定协议 drawer-message，payload 为 {message, files, ...其它附带字段}）----
         document.getElementById('send').addEventListener('click', function () {
-          var files = [
-            {
-              name: input.value || '产物文件.pdf',
-              url: 'https://example.com/' + encodeURIComponent(input.value || '产物文件.pdf'),
-              type: 'pdf',
-            },
-          ];
+          var msg = {
+            message: '分析完成：' + (input.value || '产物文件.pdf'),
+            files: [
+              {
+                name: input.value || '产物文件.pdf',
+                url: 'https://example.com/' + encodeURIComponent(input.value || '产物文件.pdf'),
+                type: 'pdf',
+              },
+            ],
+            ts: Date.now(), // 其它附带字段，原样透传
+          };
           parent.postMessage(
-            { source: 'ckc-expert-agent', type: 'drawer-files', payload: files },
+            { source: 'ckc-expert-agent', type: 'drawer-message', payload: msg },
             '*',
           );
-          log('out', '产物文件（发给宿主）', files);
+          log('out', '消息（发给宿主）', msg);
         });
 
         // ---- header 上的全屏按钮：固定协议 drawer-fullscreen，宿主组件据此调整抽屉宽度 ----
