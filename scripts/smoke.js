@@ -286,9 +286,10 @@ assert.ok(
     frameMsgs.findIndex((m) => m.msg.type === 'drawer-visibility-change'),
   '配置消息先于显隐消息发送',
 );
+// visible: true 的显隐消息带打开方式（openSource）：首开由点击悬浮图标触发
 assert.deepStrictEqual(
-  toFrame('drawer-visibility-change').map((m) => m.msg.visible),
-  [true],
+  toFrame('drawer-visibility-change').map((m) => ({ visible: m.msg.visible, openSource: m.msg.openSource })),
+  [{ visible: true, openSource: 'launcher' }],
 );
 assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
@@ -576,6 +577,12 @@ assert.strictEqual(gotSessionIds.length, 1, '销毁后 sessionId 监听已解绑
 const visibilitySeq = (msgs) =>
   msgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.visible);
 assert.deepStrictEqual(visibilitySeq(frameMsgs), [true, false, true, false, true, true, false]);
+// 打开方式（openSource）随 visible: true 的显隐消息发送、visible: false 不带：
+// [首开点悬浮图标, 关闭按钮, handle.open(), handle.close(), 再点悬浮图标, 重新就绪补发（沿用失败期间 handle.open() 的方式）, 销毁]
+assert.deepStrictEqual(
+  frameMsgs.filter((m) => m.msg.type === 'drawer-visibility-change').map((m) => m.msg.openSource),
+  ['launcher', undefined, 'handle', undefined, 'launcher', 'handle', undefined],
+);
 assert.ok(frameMsgs.every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'));
 
 // 宿主侧显隐走 onVisibilityChange 回调：只在真实变化时触发（重新加载补发不重复回调），
@@ -654,7 +661,30 @@ assert.deepStrictEqual(
   [{ closeSessionOnClose: true }],
   'closeSessionOnClose: true 时配置随 drawer-ready 后发给 iframe',
 );
+assert.deepStrictEqual(
+  frameMsgs
+    .slice(cfgMsgsBefore)
+    .filter((m) => m.msg.type === 'drawer-visibility-change')
+    .map((m) => m.msg.openSource),
+  ['handle'],
+  'handle.open() 打开方式为 handle',
+);
 dcfg.destroy();
+
+// sendMessage 自动打开抽屉也算「用 DrawerHandle 的打开」：openSource 为 'handle'
+const dsm = createDrawer({ env: 'dev', token: 't-sm', agentCode: 'a-sm' });
+const smBefore = frameMsgs.length;
+dsm.sendMessage({ message: '自动打开', files: [] });
+dispatchWindowMessage(dsm.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.deepStrictEqual(
+  frameMsgs
+    .slice(smBefore)
+    .filter((m) => m.msg.type === 'drawer-visibility-change')
+    .map((m) => ({ visible: m.msg.visible, openSource: m.msg.openSource })),
+  [{ visible: true, openSource: 'handle' }],
+  'sendMessage 自动打开的打开方式为 handle',
+);
+dsm.destroy();
 
 // 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域；
 // 点击遮盖层默认不关闭（options.maskClosable 默认 false），maskClosable: true 时点击才关闭

@@ -166,15 +166,18 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 **宿主 → iframe**（组件内部 `iframe.contentWindow.postMessage(msg, iframe 页面 origin)`）：
 
-**1. 显隐消息**：抽屉**显示/隐藏**时（含 iframe 内发 `drawer-close` 触发的隐藏）：
+**1. 显隐消息**：抽屉**显示/隐藏**时（含 iframe 内发 `drawer-close` 触发的隐藏）；显示（`visible: true`）时带 `openSource` 标识**打开方式**：
 
 ```js
 {
   source: 'ckc-expert-agent',
   type: 'drawer-visibility-change',
-  visible: true // true=显示，false=隐藏
+  visible: true, // true=显示，false=隐藏
+  openSource: 'launcher' // 打开方式（仅 visible: true 时带）：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开）
 }
 ```
+
+`visible: false` 的消息不带 `openSource`；iframe 刷新/重新初始化后重新就绪补发的当前显隐（`visible: true`）沿用本次打开方式。
 
 **2. 业务消息（双向）**：宿主调用 `drawer.sendMessage(payload)` 时发给 iframe，payload 为 `{message, files, sessionId?, directSend?}`（`sessionId` 选填，用于唤起已有的 agent 会话；`directSend` 选填，是否直接发送；二者随消息原样传到 iframe，由 iframe 侧处理）；iframe 发同类型消息给宿主时由 `drawer.receiveMessage(handler)` 接收，payload 为 `{message, files, sessionId?, ...其它附带字段}`（`sessionId` 为可选会话 ID，其它附带字段原样透传；`message` 不是字符串或 `files` 不是 `DrawerFile[]` 的消息一律丢弃）：
 

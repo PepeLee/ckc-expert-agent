@@ -58,11 +58,16 @@ export interface DrawerOptions {
   closeSessionOnClose?: boolean;
 }
 
+/** 抽屉打开方式：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开） */
+export type DrawerOpenSource = 'launcher' | 'handle';
+
 /** 抽屉显隐变化时发给 iframe 的消息（宿主侧通过 onVisibilityChange 回调感知） */
 export interface DrawerVisibilityMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-visibility-change';
   visible: boolean;
+  /** 打开方式（仅 visible: true 时带）：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开） */
+  openSource?: DrawerOpenSource;
 }
 
 /**
@@ -426,6 +431,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let maskHost: HTMLDivElement | null = null;
   let frame: HTMLIFrameElement | null = null;
   let visible = false;
+  /** 本次打开的方式（visible: true 的显隐消息带上；重新就绪补发当前状态时沿用） */
+  let openSource: DrawerOpenSource = 'handle';
   let destroyed = false;
   /** iframe 就绪：已收到 iframe 的 drawer-ready 就绪消息（不以 load 事件判断加载成功）；此前 sendMessage/显隐排队，此后直发 */
   let frameReady = false;
@@ -534,25 +541,27 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       type: 'drawer-config',
       payload: { closeSessionOnClose: options.closeSessionOnClose === true },
     });
-    postToFrame({
-      source: 'ckc-expert-agent',
-      type: 'drawer-visibility-change',
-      visible,
-    });
+    postToFrame(visibilityMessage(visible));
     while (pendingMessages.length > 0) {
       if (!postToFrame(pendingMessages[0])) break;
       pendingMessages.shift();
     }
   };
 
-  const notify = (v: boolean): void => {
+  /** 构造显隐消息：visible: true 时带打开方式（openSource），visible: false 不带 */
+  const visibilityMessage = (v: boolean): DrawerVisibilityMessage => {
     const msg: DrawerVisibilityMessage = {
       source: 'ckc-expert-agent',
       type: 'drawer-visibility-change',
       visible: v,
     };
+    if (v) msg.openSource = openSource;
+    return msg;
+  };
+
+  const notify = (v: boolean): void => {
     // iframe 就绪前不发（发给 about:blank 会因 origin 不匹配抛错），就绪时由 onFrameReady 补发当前状态
-    if (frameReady) postToFrame(msg);
+    if (frameReady) postToFrame(visibilityMessage(v));
     for (const handler of [...visibilityHandlers]) handler(v);
   };
 
@@ -692,7 +701,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     return host;
   };
 
-  const open = (): void => {
+  /** 显示抽屉（src=打开方式：launcher=点击悬浮图标，handle=DrawerHandle.open() / sendMessage 自动打开） */
+  const open = (src: DrawerOpenSource): void => {
     if (destroyed || visible) return;
     if (!drawerHost) {
       initDrawer();
@@ -700,6 +710,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     (drawerHost as HTMLDivElement).classList.remove('ckc-drawer--hidden');
     (drawerHost as HTMLDivElement).inert = false;
     maskHost?.classList.remove('ckc-mask--hidden');
+    openSource = src;
     visible = true;
     notify(true);
   };
@@ -756,7 +767,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       if (activeDragEnd === onCancel) activeDragEnd = null;
       // 仅在真正原地松开（pointerup）时视为单击打开抽屉
-      if (!moved && isPointerUp) open();
+      if (!moved && isPointerUp) open('launcher');
     }
     function onPointerUp(): void {
       endDrag(true);
@@ -780,8 +791,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   const sendMessage = (payload: DrawerPayload): void => {
     if (destroyed) return;
-    // 发消息时自动打开抽屉（未初始化则先初始化 iframe）
-    open();
+    // 发消息时自动打开抽屉（未初始化则先初始化 iframe；打开方式记为 handle）
+    open('handle');
     const msg: DrawerMessage = {
       source: 'ckc-expert-agent',
       type: 'drawer-message',
@@ -806,7 +817,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     get isOpen(): boolean {
       return visible && !destroyed;
     },
-    open,
+    open: (): void => open('handle'),
     close,
     setWidth: (w: number): void => {
       applyWidth(w);

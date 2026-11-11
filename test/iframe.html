@@ -186,7 +186,7 @@
           } else if (d.type === 'drawer-config') {
             log('in', 'drawer-config（组件配置，关闭抽屉时是否关闭当前 agent 会话）', d.payload);
           } else if (d.type === 'drawer-visibility-change') {
-            log('in', '抽屉显隐', { visible: d.visible });
+            log('in', '抽屉显隐', { visible: d.visible, openSource: d.openSource });
             stateEl.textContent = d.visible
               ? '抽屉状态：显示中'
               : '抽屉状态：已隐藏（iframe 继续运行）';
