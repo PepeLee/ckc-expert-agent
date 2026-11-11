@@ -140,7 +140,7 @@
       transform: rotate(360deg);
     }
   }
-`;function _(e){var a,o,_,v;let y=e&&e.env?r[e.env]:void 0;if(!y)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.env 指定运行环境（dev / sit / pro / local）`);if(typeof e.token!=`string`||e.token===``)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.token 传入鉴权 token`);if(typeof e.agentCode!=`string`||e.agentCode===``)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.agentCode 传入智能体编码`);let b=Math.max(0,(a=e.minWidth)==null?i:a),x=Math.max(b,Math.min((o=e.maxWidth)==null?window.innerWidth*.9:o,window.innerWidth)),S=d((_=e.width)==null?n:_,b,x),C=S,w=`*`;try{let e=new URL(y).origin;e&&e!==`null`&&(w=e)}catch(e){}let T=document.createElement(`div`),E=T.attachShadow({mode:`open`});E.innerHTML=`
+`;function _(e){var a,o,_,v;let y=e&&e.env?r[e.env]:void 0;if(!y)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.env 指定运行环境（dev / sit / pro / local）`);if(typeof e.token!=`string`||e.token===``)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.token 传入鉴权 token`);if(typeof e.agentCode!=`string`||e.agentCode===``)throw TypeError(`[ckc-expert-agent] createDrawer: 必须通过 options.agentCode 传入智能体编码`);let b=Math.max(0,(a=e.minWidth)==null?i:a),x=Math.max(b,Math.min((o=e.maxWidth)==null?window.innerWidth:o,window.innerWidth)),S=d((_=e.width)==null?n:_,b,x),C=S,w=`*`;try{let e=new URL(y).origin;e&&e!==`null`&&(w=e)}catch(e){}let T=document.createElement(`div`),E=T.attachShadow({mode:`open`});E.innerHTML=`
     <style>${m}</style>
     <button class="btn" type="button" aria-label="打开抽屉">
       ${t}

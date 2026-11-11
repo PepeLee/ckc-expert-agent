@@ -43,7 +43,7 @@ export interface DrawerOptions {
   width?: number;
   /** 最小宽度（px），默认 200 */
   minWidth?: number;
-  /** 最大宽度（px），默认视口宽度的 90% */
+  /** 最大宽度（px），默认视口宽度 */
   maxWidth?: number;
   /** 抽屉打开时是否给左侧页面区域加遮盖层（默认不开启；开启后点击遮盖层关闭抽屉） */
   mask?: boolean;
@@ -369,7 +369,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   const minWidth = Math.max(0, options.minWidth ?? DEFAULT_MIN_WIDTH);
   const maxWidth = Math.max(
     minWidth,
-    Math.min(options.maxWidth ?? window.innerWidth * 0.9, window.innerWidth),
+    Math.min(options.maxWidth ?? window.innerWidth, window.innerWidth),
   );
   let width = clamp(options.width ?? DEFAULT_WIDTH, minWidth, maxWidth);
   /** 默认宽度：取消全屏（drawer-fullscreen: false）时恢复到的初始宽度 */

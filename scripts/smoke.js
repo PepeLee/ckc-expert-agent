@@ -493,7 +493,7 @@ dispatchWindowMessage(frame.contentWindow, {
   type: 'drawer-fullscreen',
   fullscreen: true,
 });
-assert.strictEqual(drawerHost.style.width, '1152px', '全屏 = 最大宽度（默认视口 90%）');
+assert.strictEqual(drawerHost.style.width, '1280px', '全屏 = 最大宽度（默认视口宽度）');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
   type: 'drawer-fullscreen',
