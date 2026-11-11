@@ -77,6 +77,7 @@
       });
 
       // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）
+      // 不返回值：抽屉直接显示/隐藏（默认）；返回布尔值或 Promise<boolean>（true=显示 / false=隐藏）可自行控制本次显隐
       drawer.onVisibilityChange(function (visible) {
         logMsg('抽屉' + (visible ? '显示' : '隐藏'));
       });

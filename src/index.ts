@@ -151,15 +151,20 @@ export interface DrawerCloseMessage {
 /** receiveSessionId 回调：接收 iframe 生成的 sessionId */
 export type DrawerSessionHandler = (sessionId: string) => void;
 
-/** onVisibilityChange 回调：抽屉显示/隐藏变化 */
-export type DrawerVisibilityHandler = (visible: boolean) => void;
+/**
+ * onVisibilityChange 回调：抽屉显示/隐藏变化（在显隐生效前触发，visible 为本次请求的显隐）。
+ * 默认不返回值：抽屉照常直接显示/隐藏；
+ * 返回布尔值或 Promise<boolean> 可自行控制本次显隐（返回值即最终状态：true=显示 / false=隐藏），
+ * 多个回调时按注册顺序以第一个明确的布尔值为准；抛错 / Promise 被拒绝按默认显隐处理。
+ */
+export type DrawerVisibilityHandler = (visible: boolean) => void | boolean | Promise<boolean | void>;
 
 export interface DrawerHandle {
   /** 抽屉内的 iframe 元素，首次打开抽屉前为 null */
   readonly iframe: HTMLIFrameElement | null;
   /** 当前抽屉是否处于打开状态（未初始化、已关闭、已销毁时为 false） */
   readonly isOpen: boolean;
-  /** 显示抽屉（首次调用时初始化抽屉并加载 iframe） */
+  /** 显示抽屉（首次显示时初始化抽屉并加载 iframe；onVisibilityChange 回调可返回布尔值 / Promise<boolean> 自行控制是否显示） */
   open(): void;
   /** 隐藏抽屉（移出视口但不销毁，iframe 继续运行，滚动条等状态保留） */
   close(): void;
@@ -173,7 +178,9 @@ export interface DrawerHandle {
   receiveMessage(handler: DrawerMessageHandler): () => void;
   /** 接收 sessionId：宿主未传 options.sessionId 时 iframe 生成并发出（drawer-session），宿主在此接收处理，返回取消监听函数 */
   receiveSessionId(handler: DrawerSessionHandler): () => void;
-  /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数 */
+  /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数；
+   *  回调在显隐生效前触发（visible 为请求的显隐），不返回值时按默认直接显示/隐藏，
+   *  返回布尔值或 Promise<boolean> 可自行控制最终显隐（true=显示 / false=隐藏） */
   onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
   destroy(): void;
@@ -572,20 +579,105 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     return msg;
   };
 
+  /** 触发 onVisibilityChange 回调（返回值供显隐控制用）；单个回调抛错 / 拒绝不影响其它回调与后续流程 */
+  const fireVisibilityHandlers = (v: boolean): unknown[] => {
+    const results: unknown[] = [];
+    for (const handler of [...visibilityHandlers]) {
+      try {
+        const r: unknown = handler(v);
+        if (r && typeof (r as PromiseLike<unknown>).then === 'function') {
+          // 拒绝按默认显隐处理（转为中立值）：notify（destroy）路径丢弃返回值也不会产生未处理的 Promise 拒绝
+          results.push(
+            (r as PromiseLike<unknown>).then(
+              (val: unknown) => val,
+              (err: unknown) => {
+                console.warn('[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理', err);
+                return undefined;
+              },
+            ),
+          );
+        } else {
+          results.push(r);
+        }
+      } catch (err) {
+        console.warn('[ckc-expert-agent] onVisibilityChange 回调执行出错，按默认显隐处理', err);
+      }
+    }
+    return results;
+  };
+
+  /** 直接通知显隐（不接受回调控制）：仅 destroy 清场时使用 */
   const notify = (v: boolean): void => {
     // iframe 就绪前不发（发给 about:blank 会因 origin 不匹配抛错），就绪时由 onFrameReady 补发当前状态
     if (frameReady) postToFrame(visibilityMessage(v));
-    for (const handler of [...visibilityHandlers]) handler(v);
+    fireVisibilityHandlers(v);
+  };
+
+  /** 在途显隐请求的目标值（null=无在途请求）：同向请求不重复触发回调 */
+  let pendingVisibility: boolean | null = null;
+  /** 显隐请求令牌：回调返回 Promise 时的异步决定只对最新一次请求生效 */
+  let visibilityToken = 0;
+
+  /** 应用最终显隐（v=最终显隐）：只改 DOM / 状态并通知 iframe；onVisibilityChange 回调已在请求阶段触发过 */
+  const applyVisibility = (v: boolean, src: DrawerOpenSource): void => {
+    if (destroyed || v === visible) return;
+    if (v) {
+      if (!drawerHost) initDrawer();
+      (drawerHost as HTMLDivElement).classList.remove('ckc-drawer--hidden');
+      (drawerHost as HTMLDivElement).inert = false;
+      maskHost?.classList.remove('ckc-mask--hidden');
+      openSource = src;
+      visible = true;
+    } else {
+      if (!drawerHost) return;
+      // 只隐藏不销毁：平移出视口（保留布局盒子），iframe 内容继续运行、滚动状态保留
+      drawerHost.classList.add('ckc-drawer--hidden');
+      drawerHost.inert = true;
+      maskHost?.classList.add('ckc-mask--hidden');
+      visible = false;
+    }
+    if (frameReady) postToFrame(visibilityMessage(v));
+  };
+
+  /**
+   * 请求显隐（v=请求的显隐）：先触发 onVisibilityChange 回调（参数为请求值）再生效——
+   * 回调可返回布尔值或 Promise<boolean> 自行控制本次显隐（返回值即最终状态：true=显示 / false=隐藏），
+   * 不返回（或返回非布尔）则按默认直接显示/隐藏；多个回调按注册顺序以第一个明确的布尔值为准。
+   * 回调返回 Promise 时显隐在其结算后生效，期间更新的显隐请求 / destroy 会取消本次生效。
+   */
+  const requestVisibility = (v: boolean, src: DrawerOpenSource): void => {
+    if (destroyed) return;
+    if (pendingVisibility === v) return; // 同向请求已在途，不重复触发回调
+    if (pendingVisibility === null && v === visible) return; // 已是目标状态，不触发回调
+    const token = ++visibilityToken;
+    pendingVisibility = v;
+    const results = fireVisibilityHandlers(v);
+    const settle = async (): Promise<void> => {
+      let decision: boolean | undefined;
+      for (const r of results) {
+        let val: unknown = r;
+        if (val && typeof (val as PromiseLike<unknown>).then === 'function') {
+          try {
+            val = await (val as PromiseLike<unknown>);
+          } catch (err) {
+            console.warn('[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理', err);
+            val = undefined;
+          }
+        }
+        if (typeof val === 'boolean') {
+          decision = val;
+          break;
+        }
+      }
+      if (destroyed || token !== visibilityToken) return;
+      pendingVisibility = null;
+      applyVisibility(decision === undefined ? v : decision, src);
+    };
+    void settle();
   };
 
   const close = (): void => {
-    if (destroyed || !visible || !drawerHost) return;
-    // 只隐藏不销毁：平移出视口（保留布局盒子），iframe 内容继续运行、滚动状态保留
-    drawerHost.classList.add('ckc-drawer--hidden');
-    drawerHost.inert = true;
-    maskHost?.classList.add('ckc-mask--hidden');
-    visible = false;
-    notify(false);
+    requestVisibility(false, openSource);
   };
 
   const initDrawer = (): HTMLDivElement => {
@@ -716,16 +808,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   /** 显示抽屉（src=打开方式：launcher=点击悬浮图标，handle=DrawerHandle.open() / sendMessage 自动打开） */
   const open = (src: DrawerOpenSource): void => {
-    if (destroyed || visible) return;
-    if (!drawerHost) {
-      initDrawer();
-    }
-    (drawerHost as HTMLDivElement).classList.remove('ckc-drawer--hidden');
-    (drawerHost as HTMLDivElement).inert = false;
-    maskHost?.classList.remove('ckc-mask--hidden');
-    openSource = src;
-    visible = true;
-    notify(true);
+    requestVisibility(true, src);
   };
 
   // 悬浮按钮：拖动可移动位置，单击打开抽屉（拖拽事件丢失兜底同左边框；options.launcher === false 时不生成、不注册）

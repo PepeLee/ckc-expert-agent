@@ -747,4 +747,111 @@ for (const cls of usedClasses) {
   assert.ok(srcText.includes('.' + cls), `样式缺少 .${cls} 选择器，classList 操作会静默失效`);
 }
 
-console.log('smoke: all assertions passed');
+// ===== onVisibilityChange 回调自行控制显隐：返回布尔值或 Promise<boolean>（true=显示 / false=隐藏） =====
+(async () => {
+  // 等回调返回的 Promise 结算（组件在结算后才应用显隐）
+  const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+  // 回调返回 Promise<boolean> 接管显隐：返回值即最终状态；不返回（或返回非布尔）按默认直接显隐
+  const asked = [];
+  let next = false;
+  const dvc = createDrawer({ env: 'dev', token: 't-vc', agentCode: 'a-vc' });
+  dvc.onVisibilityChange((v) => {
+    asked.push(v);
+    return Promise.resolve(next); // 由 next 决定最终显隐
+  });
+  next = false;
+  dvc.open();
+  assert.strictEqual(dvc.isOpen, false, '回调返回 Promise<false>：请求显示仍保持隐藏（结算后生效）');
+  assert.strictEqual(dvc.iframe, null, '未显示时不初始化抽屉');
+  assert.strictEqual(body.children.length, 1, '未显示时不创建抽屉 DOM（只有悬浮按钮）');
+  await flush();
+  assert.strictEqual(dvc.isOpen, false, 'Promise 结算后仍隐藏');
+  next = true;
+  dvc.open();
+  assert.strictEqual(dvc.isOpen, false, '异步决定结算前不生效');
+  await flush();
+  assert.strictEqual(dvc.isOpen, true, '回调返回 Promise<true>：显示生效');
+  assert.ok(dvc.iframe, '显示时初始化抽屉');
+  assert.strictEqual(body.children.length, 2);
+  next = true;
+  dvc.close();
+  await flush();
+  assert.strictEqual(dvc.isOpen, true, '请求隐藏但回调返回 Promise<true>：保持显示（取消隐藏）');
+  next = false;
+  dvc.close();
+  await flush();
+  assert.strictEqual(dvc.isOpen, false, '请求隐藏且回调返回 Promise<false>：隐藏生效');
+  assert.deepStrictEqual(asked, [true, true, false, false], '回调收到每次请求的显隐值');
+  dvc.destroy();
+  assert.strictEqual(body.children.length, 0);
+
+  // 回调不返回值：按默认直接显示/隐藏（同步立即生效，与原行为一致）
+  const seen = [];
+  const dd = createDrawer({ env: 'dev', token: 't-dv', agentCode: 'a-dv' });
+  dd.onVisibilityChange((v) => {
+    seen.push(v);
+  });
+  dd.open();
+  assert.strictEqual(dd.isOpen, true, '回调不返回值：按默认直接显示（同步生效）');
+  dd.close();
+  assert.strictEqual(dd.isOpen, false, '回调不返回值：按默认直接隐藏（同步生效）');
+  assert.deepStrictEqual(seen, [true, false]);
+  dd.destroy();
+
+  // 同步返回布尔值同样接管显隐
+  const dsy = createDrawer({ env: 'dev', token: 't-sy', agentCode: 'a-sy' });
+  dsy.onVisibilityChange(() => false); // 始终「隐藏」：显示请求被取消
+  dsy.open();
+  assert.strictEqual(dsy.isOpen, false, '同步返回 false 同样接管显隐（请求显示被取消）');
+  assert.strictEqual(body.children.length, 1, '未显示时不创建抽屉 DOM');
+  dsy.destroy();
+
+  // 回调抛错 / Promise 被拒绝：按默认显隐处理
+  const de = createDrawer({ env: 'dev', token: 't-er', agentCode: 'a-er' });
+  de.onVisibilityChange(() => {
+    throw new Error('handler boom');
+  });
+  de.open();
+  assert.strictEqual(de.isOpen, true, '回调抛错按默认显隐处理');
+  de.destroy();
+  const dre = createDrawer({ env: 'dev', token: 't-re', agentCode: 'a-re' });
+  dre.onVisibilityChange(() => Promise.reject(new Error('reject boom')));
+  dre.open();
+  await flush();
+  assert.strictEqual(dre.isOpen, true, 'Promise 被拒绝按默认显隐处理');
+  dre.destroy();
+
+  // 多个回调：按注册顺序以第一个明确的布尔值为准
+  const dmv = createDrawer({ env: 'dev', token: 't-mv', agentCode: 'a-mv' });
+  dmv.onVisibilityChange(() => Promise.resolve(false));
+  dmv.onVisibilityChange(() => true); // 后注册的布尔值不生效
+  dmv.open();
+  await flush();
+  assert.strictEqual(dmv.isOpen, false, '多个回调按注册顺序取第一个明确布尔值');
+  dmv.destroy();
+
+  // 同向在途请求不重复触发回调；destroy 后在途决定不再生效
+  const dfl = createDrawer({ env: 'dev', token: 't-fl', agentCode: 'a-fl' });
+  let flCalls = 0;
+  let resolveFl;
+  dfl.onVisibilityChange(() => {
+    flCalls += 1;
+    return new Promise((resolve) => {
+      resolveFl = resolve;
+    });
+  });
+  dfl.open();
+  dfl.open(); // 同向请求已在途：不重复触发回调
+  assert.strictEqual(flCalls, 1, '同向在途请求不重复触发回调');
+  dfl.destroy();
+  resolveFl(true);
+  await flush();
+  assert.strictEqual(dfl.isOpen, false, '销毁后在途决定不再生效');
+  assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+  console.log('smoke: all assertions passed');
+})().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
