@@ -200,10 +200,6 @@ const drawer = createDrawer({
   token: 'abc123',
   agentCode: 'agent-01',
   sessionId: 'sess-01',
-  payload: {
-    message: '你好',
-    files: [{ name: 'a.png', url: 'https://cdn/a.png', type: 'image/png' }],
-  },
 });
 
 // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveMessage / receiveSessionId / onVisibilityChange）
@@ -270,22 +266,15 @@ drawer.sendMessage({ message: '早安', files: [] });
 const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
 
 // iframe 就绪前不发任何消息：加载成功由 iframe 发 drawer-ready 判定，不靠 load 事件
-assert.strictEqual(toFrame('drawer-init').length, 0);
 assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
 
 // 非本 iframe 来源 / 非协议来源的就绪消息：忽略，不触发补发
 dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-ready' });
 dispatchWindowMessage(frame.contentWindow, { source: 'other', type: 'drawer-ready' });
-assert.strictEqual(toFrame('drawer-init').length, 0);
+assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
 
-// iframe 发来 drawer-ready（就绪消息）：发预置 payload（drawer-init）+ 当前显隐，再补发排队的 sendMessage
+// iframe 发来 drawer-ready（就绪消息）：发当前显隐，再补发排队的 sendMessage
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
-const initMsg = frameMsgs.find((m) => m.msg.type === 'drawer-init');
-assert.deepStrictEqual(initMsg.msg.payload, {
-  message: '你好',
-  files: [{ name: 'a.png', url: 'https://cdn/a.png', type: 'image/png' }],
-});
-assert.strictEqual(initMsg.targetOrigin, 'http://lf18kg-dev.life.cpic.com');
 assert.deepStrictEqual(
   toFrame('drawer-visibility-change').map((m) => m.msg.visible),
   [true],
@@ -529,9 +518,8 @@ assert.doesNotThrow(() => drawer.open());
 frame.contentWindow.postMessage = origPost;
 assert.strictEqual(toFrame('drawer-message').length, 2, '发送失败的消息不计入已发消息');
 
-// iframe 重新初始化（如刷新后）再次发就绪消息：重发 drawer-init + 当前显隐，补发失败的 sendMessage
+// iframe 重新初始化（如刷新后）再次发就绪消息：补发当前显隐和失败的 sendMessage
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
-assert.strictEqual(toFrame('drawer-init').length, 2, 'iframe 重新就绪后重发 drawer-init');
 assert.strictEqual(toFrame('drawer-message').length, 3, '发送失败的 sendMessage 就绪后补发');
 assert.deepStrictEqual(toFrame('drawer-message').map((m) => m.msg.payload)[2], {
   message: '弱网时的消息',
@@ -606,6 +594,29 @@ for (const [env, domain] of envCases) {
   assert.strictEqual(body.children.length, 2, '默认不开启遮盖层（悬浮按钮 + 抽屉）');
   d.destroy();
 }
+
+// sendMessage 自动打开抽屉：未初始化时调用即初始化并显示；iframe 未就绪先排队不发（就绪后补发，主流程已覆盖）
+const dsa = createDrawer({ env: 'dev', token: 't-sa', agentCode: 'a-sa' });
+assert.strictEqual(dsa.iframe, null, '前置：抽屉未初始化');
+const frameMsgsBefore = frameMsgs.length;
+dsa.sendMessage({ message: '先发消息', files: [] });
+assert.ok(dsa.iframe, 'sendMessage 自动初始化抽屉');
+assert.strictEqual(dsa.isOpen, true, 'sendMessage 自动打开抽屉');
+assert.strictEqual(
+  frameMsgs.slice(frameMsgsBefore).filter((m) => m.msg.type === 'drawer-message').length,
+  0,
+  'iframe 未就绪：排队不发送',
+);
+// 关闭后再 sendMessage：自动重新打开
+dsa.close();
+assert.strictEqual(dsa.isOpen, false, 'close 后 isOpen 为 false');
+dsa.sendMessage({ message: '再发消息', files: [] });
+assert.strictEqual(dsa.isOpen, true, 'sendMessage 自动重新打开抽屉');
+assert.strictEqual(body.children.length, 2, 'sendMessage 不会重复创建 DOM');
+dsa.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后移除全部 DOM');
+dsa.sendMessage({ message: '销毁后', files: [] });
+assert.strictEqual(body.children.length, 0, '销毁后 sendMessage 不再动作（不自动打开）');
 
 // 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域；
 // 点击遮盖层默认不关闭（options.maskClosable 默认 false），maskClosable: true 时点击才关闭

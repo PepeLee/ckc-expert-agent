@@ -9,13 +9,6 @@ const drawer = createDrawer({
   token: 'demo-token',
   agentCode: 'demo-agent',
   // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
-  // 预置数据（选填）：iframe 加载完成后通过 postMessage 传给 iframe
-  payload: {
-    message: '你好，帮我分析这份报告',
-    files: [
-      { name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'application/pdf' },
-    ],
-  },
 });
 
 // 显隐通过返回的 DrawerHandle 控制

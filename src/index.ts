@@ -10,9 +10,9 @@ export interface DrawerFile {
   type: string;
 }
 
-/** 业务消息数据（预置数据 / 宿主发送给 iframe 的消息） */
+/** 业务消息数据（宿主经 sendMessage 发送给 iframe 的消息） */
 export interface DrawerPayload {
-  /** 预置消息 */
+  /** 消息文本 */
   message: string;
   /** 附件文件列表 */
   files: DrawerFile[];
@@ -39,8 +39,6 @@ export interface DrawerOptions {
   /** 会话 ID（选填），传入时拼到路径上（/center/thd/chat/{agentCode}/{sessionId}），不传则不拼；
    *  不传时 iframe 会生成 sessionId 并发回，宿主用 receiveSessionId 接收处理 */
   sessionId?: string;
-  /** 预置消息/文件（选填），iframe 就绪（发 drawer-ready）后通过 postMessage 传给 iframe */
-  payload?: DrawerPayload;
   /** 初始宽度（px），默认 500 */
   width?: number;
   /** 最小宽度（px），默认 500 */
@@ -58,13 +56,6 @@ export interface DrawerVisibilityMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-visibility-change';
   visible: boolean;
-}
-
-/** iframe 就绪（发 drawer-ready）后收到的初始化消息（携带预置 payload；iframe 重新就绪后会重新收到） */
-export interface DrawerInitMessage {
-  source: 'ckc-expert-agent';
-  type: 'drawer-init';
-  payload: DrawerPayload;
 }
 
 /**
@@ -94,8 +85,8 @@ export interface DrawerSessionMessage {
 
 /**
  * iframe 发给宿主的就绪消息（type: drawer-ready，不带 payload）：
- * iframe 页面初始化完成后发出，宿主收到后才认定加载成功并发 drawer-init（不以 load 事件判断）；
- * iframe 刷新/重新初始化后应再次发送，宿主会重新补发 drawer-init 和当前显隐。
+ * iframe 页面初始化完成后发出，宿主收到后才认定加载成功（不以 load 事件判断），补发当前显隐和排队消息；
+ * iframe 刷新/重新初始化后应再次发送，宿主会重新补发当前显隐和排队消息。
  */
 export interface DrawerReadyMessage {
   source: 'ckc-expert-agent';
@@ -140,7 +131,7 @@ export interface DrawerHandle {
   close(): void;
   /** 设置抽屉宽度（px，自动限制在 min/max 之间） */
   setWidth(width: number): void;
-  /** 向 iframe 发送一条消息（固定协议 drawer-message；iframe 就绪前自动排队，就绪后按序补发） */
+  /** 向 iframe 发送一条消息（自动打开抽屉；固定协议 drawer-message；iframe 就绪前自动排队，就绪后按序补发） */
   sendMessage(payload: DrawerPayload): void;
   /** 接收消息：iframe 发来业务消息（drawer-message，payload 为 {message, files, ...其它附带字段}）时回调，返回取消监听函数 */
   receiveMessage(handler: DrawerMessageHandler): () => void;
@@ -430,8 +421,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (drawerHost) drawerHost.style.width = `${width}px`;
   };
 
-  // 宿主 ↔ iframe 消息固定为 drawer-init / drawer-visibility-change / drawer-message（双向） /
-  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 七种，
+  // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-message（双向） /
+  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 六种，
   // 宿主统一用 sendMessage / receiveMessage / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
   // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
@@ -444,7 +435,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     } | null;
     if (!data || data.source !== 'ckc-expert-agent') return;
     if (data.type === 'drawer-ready') {
-      // iframe 页面初始化完成（刷新/重新初始化后会再次发）：补发 drawer-init、当前显隐和排队消息
+      // iframe 页面初始化完成（刷新/重新初始化后会再次发）：补发当前显隐和排队消息
       onFrameReady();
     } else if (data.type === 'drawer-message') {
       // iframe 发来的业务消息：{message, files, ...其它附带字段}，校验后原样派发给 receiveMessage
@@ -482,7 +473,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * 这里统一捕获，消息保留待 iframe 重新就绪（再发 drawer-ready）后补发，绝不把异常抛给宿主。
    */
   const postToFrame = (
-    msg: DrawerInitMessage | DrawerVisibilityMessage | DrawerMessage,
+    msg: DrawerVisibilityMessage | DrawerMessage,
   ): boolean => {
     const target = frame?.contentWindow;
     if (!target) return false;
@@ -497,8 +488,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   /**
    * iframe 发来 drawer-ready（就绪消息）后补发一轮：
-   * 1) drawer-init（预置 payload）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
-   * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到初始化数据。
+   * 1) 当前显隐状态；2) 排队/发送失败的 sendMessage 消息。
+   * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到当前状态。
    */
   /** 隐藏加载动画（iframe 就绪或超时兜底时调用） */
   const hideLoader = (): void => {
@@ -513,14 +504,6 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
-    if (options.payload) {
-      const msg: DrawerInitMessage = {
-        source: 'ckc-expert-agent',
-        type: 'drawer-init',
-        payload: options.payload,
-      };
-      postToFrame(msg);
-    }
     postToFrame({
       source: 'ckc-expert-agent',
       type: 'drawer-visibility-change',
@@ -767,12 +750,14 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   const sendMessage = (payload: DrawerPayload): void => {
     if (destroyed) return;
+    // 发消息时自动打开抽屉（未初始化则先初始化 iframe）
+    open();
     const msg: DrawerMessage = {
       source: 'ckc-expert-agent',
       type: 'drawer-message',
       payload,
     };
-    // iframe 就绪前或发送失败时排队，iframe 就绪（drawer-ready）后按序补发（上限 100 条，超出丢最旧）
+    // iframe 未就绪或发送失败时排队，iframe 就绪（drawer-ready）后按序补发（上限 100 条，超出丢最旧）
     const enqueue = (): void => {
       if (pendingMessages.length >= 100) pendingMessages.shift();
       pendingMessages.push(msg);

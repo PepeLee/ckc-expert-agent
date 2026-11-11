@@ -42,19 +42,14 @@
     <script>
       // 默认只创建悬浮圆形按钮；点击按钮后初始化抽屉（内容固定为 iframe）
       // iframe 最终地址：{域名}/center/thd/chat/{agentCode}[/{sessionId}]?token={token}
-      // payload 选填，iframe 加载完成后通过 postMessage 传给 iframe
       // 显隐通过返回的 DrawerHandle 控制：drawer.open() / drawer.close()
       var drawer = window.createCkcDrawer({
         env: 'local', // 运行环境：dev / sit / pro / local，决定站点域名（本地联调改为 'local'）
         token: 'demo-token',
         agentCode: 'demo-agent',
-        mask: true, // 抽屉打开时给左侧页面区域加遮盖层
+        // mask: true, // 抽屉打开时给左侧页面区域加遮盖层
         maskClosable: true, // 点击遮盖层关闭抽屉（默认不关闭）
         // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
-        payload: {
-          message: '你好',
-          files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
-        },
       });
 
       // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveMessage / receiveSessionId / onVisibilityChange），
