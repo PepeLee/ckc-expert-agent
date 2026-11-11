@@ -45,8 +45,10 @@ export interface DrawerOptions {
   minWidth?: number;
   /** 最大宽度（px），默认视口宽度 */
   maxWidth?: number;
-  /** 抽屉打开时是否给左侧页面区域加遮盖层（默认不开启；开启后点击遮盖层关闭抽屉） */
+  /** 抽屉打开时是否给左侧页面区域加遮盖层（默认不开启） */
   mask?: boolean;
+  /** 开启遮盖层（mask: true）后，点击遮盖层是否关闭抽屉（默认不关闭） */
+  maskClosable?: boolean;
 }
 
 /** 抽屉显隐变化时发给 iframe 的消息（宿主侧通过 onVisibilityChange 回调感知） */
@@ -226,7 +228,7 @@ const LAUNCHER_STYLES = `
   }
 `;
 
-/** 遮盖层（options.mask 开启时）：抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉 */
+/** 遮盖层（options.mask 开启时）：抽屉打开时盖住左侧页面区域；点击遮盖层是否关闭抽屉由 options.maskClosable 控制 */
 const MASK_STYLES = `
   :host {
     all: initial;
@@ -242,7 +244,6 @@ const MASK_STYLES = `
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.45);
-    cursor: pointer;
   }
 `;
 
@@ -639,7 +640,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       document.addEventListener('visibilitychange', onVisibilityChange);
     });
 
-    // 遮盖层（options.mask，默认不开启）：抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉
+    // 遮盖层（options.mask，默认不开启）：抽屉打开时盖住左侧页面区域；
+    // 点击遮盖层是否关闭抽屉由 options.maskClosable 控制（默认不关闭）
     if (options.mask === true && !maskHost) {
       const mHost = document.createElement('div');
       const mShadow = mHost.attachShadow({ mode: 'open' });
@@ -647,7 +649,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
         <style>${MASK_STYLES}</style>
         <div class="mask"></div>
       `;
-      mHost.addEventListener('click', close);
+      if (options.maskClosable === true) {
+        mHost.addEventListener('click', close);
+        mHost.style.cursor = 'pointer'; // cursor 可继承到 .mask，提示可点击
+      }
       (document.body ?? document.documentElement).appendChild(mHost);
       maskHost = mHost;
     }

@@ -606,18 +606,32 @@ for (const [env, domain] of envCases) {
   d.destroy();
 }
 
-// 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域，点击遮盖层关闭抽屉
+// 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域；
+// 点击遮盖层默认不关闭（options.maskClosable 默认 false），maskClosable: true 时点击才关闭
 const dm = createDrawer({ env: 'dev', token: 'tm', agentCode: 'am', mask: true });
 dm.open();
 assert.strictEqual(body.children.length, 3, '开启遮盖层后：悬浮按钮 + 遮盖层 + 抽屉');
 const maskEl = body.children[1];
 assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), false, '打开时遮盖层显示');
-maskEl.listeners.click[0](); // 点击遮盖层
-assert.strictEqual(dm.isOpen, false, '点击遮盖层关闭抽屉');
+if (maskEl.listeners.click) maskEl.listeners.click[0](); // 点击遮盖层
+assert.strictEqual(dm.isOpen, true, '点击遮盖层默认不关闭抽屉');
+assert.ok(!maskEl.style.cursor, '默认点击不可关闭时不应显示可点击光标');
+dm.close();
 assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), true, '关闭后遮盖层隐藏');
 dm.open();
 assert.strictEqual(maskEl.classList.contains('ckc-mask--hidden'), false, '重新打开遮盖层恢复显示');
 dm.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后遮盖层一并移除');
+
+// maskClosable: true：点击遮盖层关闭抽屉
+const dmc = createDrawer({ env: 'dev', token: 'tm', agentCode: 'am', mask: true, maskClosable: true });
+dmc.open();
+const maskEl2 = body.children[1];
+assert.strictEqual(maskEl2.style.cursor, 'pointer', '可点击关闭时显示可点击光标');
+maskEl2.listeners.click[0](); // 点击遮盖层
+assert.strictEqual(dmc.isOpen, false, 'maskClosable: true 时点击遮盖层关闭抽屉');
+assert.strictEqual(maskEl2.classList.contains('ckc-mask--hidden'), true, '关闭后遮盖层隐藏');
+dmc.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后遮盖层一并移除');
 
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
