@@ -278,8 +278,8 @@ assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
 assert.deepStrictEqual(
   toFrame('drawer-config').map((m) => m.msg.payload),
-  [{ closeSessionOnClose: false }],
-  'drawer-ready 后发送配置消息（closeSessionOnClose 未传默认 false）',
+  [{ closeSessionOnClose: false, newSessionOnLauncherOpen: false }],
+  'drawer-ready 后发送配置消息（两个配置未传时均默认 false）',
 );
 assert.ok(
   frameMsgs.findIndex((m) => m.msg.type === 'drawer-config') <
@@ -648,8 +648,14 @@ assert.strictEqual(body.children.length, 0, '销毁后移除全部 DOM');
 dsa.sendMessage({ message: '销毁后', files: [] });
 assert.strictEqual(body.children.length, 0, '销毁后 sendMessage 不再动作（不自动打开）');
 
-// DrawerOptions.closeSessionOnClose：drawer-ready 后把该配置发给 iframe（关闭抽屉时是否关闭当前 agent 会话）
-const dcfg = createDrawer({ env: 'dev', token: 't-cfg', agentCode: 'a-cfg', closeSessionOnClose: true });
+// DrawerOptions 配置（closeSessionOnClose / newSessionOnLauncherOpen）：drawer-ready 后随 drawer-config 发给 iframe
+const dcfg = createDrawer({
+  env: 'dev',
+  token: 't-cfg',
+  agentCode: 'a-cfg',
+  closeSessionOnClose: true,
+  newSessionOnLauncherOpen: true,
+});
 dcfg.open();
 const cfgMsgsBefore = frameMsgs.length;
 dispatchWindowMessage(dcfg.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
@@ -658,8 +664,8 @@ assert.deepStrictEqual(
     .slice(cfgMsgsBefore)
     .filter((m) => m.msg.type === 'drawer-config')
     .map((m) => m.msg.payload),
-  [{ closeSessionOnClose: true }],
-  'closeSessionOnClose: true 时配置随 drawer-ready 后发给 iframe',
+  [{ closeSessionOnClose: true, newSessionOnLauncherOpen: true }],
+  'closeSessionOnClose / newSessionOnLauncherOpen 为 true 时随 drawer-config 发给 iframe',
 );
 assert.deepStrictEqual(
   frameMsgs

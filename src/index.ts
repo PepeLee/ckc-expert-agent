@@ -56,6 +56,9 @@ export interface DrawerOptions {
   /** 关闭抽屉时是否关闭当前 agent 会话（默认不关闭）；
    *  收到 iframe 的 drawer-ready 就绪消息后随配置消息（drawer-config）发给 iframe，由智能体页面按此配置执行 */
   closeSessionOnClose?: boolean;
+  /** 从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）；
+   *  随配置消息（drawer-config）发给 iframe，由智能体页面结合打开方式（openSource）按此配置执行 */
+  newSessionOnLauncherOpen?: boolean;
 }
 
 /** 抽屉打开方式：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开） */
@@ -82,6 +85,8 @@ export interface DrawerConfigMessage {
   payload: {
     /** 关闭抽屉时是否关闭当前 agent 会话 */
     closeSessionOnClose: boolean;
+    /** 从悬浮按钮打开抽屉时是否重新开启新会话 */
+    newSessionOnLauncherOpen: boolean;
   };
 }
 
@@ -524,7 +529,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
   /**
    * iframe 发来 drawer-ready（就绪消息）后补发一轮：
-   * 1) 配置消息（drawer-config，含 closeSessionOnClose）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
+   * 1) 配置消息（drawer-config，含 closeSessionOnClose / newSessionOnLauncherOpen）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
    * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到当前状态。
    */
   const onFrameReady = (): void => {
@@ -535,11 +540,14 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
-    // 先发配置（关闭抽屉时是否关闭当前 agent 会话），再发当前显隐，最后补发排队消息
+    // 先发配置（关闭抽屉是否关会话 / 悬浮按钮打开是否新开会话），再发当前显隐，最后补发排队消息
     postToFrame({
       source: 'ckc-expert-agent',
       type: 'drawer-config',
-      payload: { closeSessionOnClose: options.closeSessionOnClose === true },
+      payload: {
+        closeSessionOnClose: options.closeSessionOnClose === true,
+        newSessionOnLauncherOpen: options.newSessionOnLauncherOpen === true,
+      },
     });
     postToFrame(visibilityMessage(visible));
     while (pendingMessages.length > 0) {

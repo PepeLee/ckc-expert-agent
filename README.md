@@ -12,6 +12,7 @@
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe（**自动打开抽屉**，未就绪自动排队、就绪后补发）、`drawer.receiveMessage()` 接收 iframe 发来的消息、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
 - 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
+- 可选 `options.newSessionOnLauncherOpen`（默认 `false`）：控制**从悬浮按钮打开抽屉时是否重新开启新会话**；同样随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -69,6 +70,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     mask: true, // 选填：是否给左侧页面区域加遮盖层
     maskClosable: true, // 选填：点击遮盖层是否关闭抽屉（默认不关闭）
     closeSessionOnClose: true, // 选填：关闭抽屉时是否关闭当前 agent 会话（默认不关闭）
+    newSessionOnLauncherOpen: true, // 选填：从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）
   });
 
   // 显隐通过返回的 DrawerHandle 控制
@@ -135,6 +137,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.mask` | `boolean` | `false` | 抽屉打开时是否给左侧页面区域加遮盖层（半透明遮罩，阻止操作宿主页） |
 | `options.maskClosable` | `boolean` | `false` | 开启遮盖层（`mask: true`）后，点击遮盖层是否关闭抽屉 |
 | `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否关闭当前 agent 会话；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
+| `options.newSessionOnLauncherOpen` | `boolean` | `false` | 从悬浮按钮打开抽屉时是否重新开启新会话；随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行 |
 
 环境与站点域名映射（域名固化在组件内）：
 
@@ -197,11 +200,14 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 {
   source: 'ckc-expert-agent',
   type: 'drawer-config',
-  payload: { closeSessionOnClose: false } // 关闭抽屉时是否关闭当前 agent 会话（options.closeSessionOnClose，默认 false）
+  payload: {
+    closeSessionOnClose: false, // 关闭抽屉时是否关闭当前 agent 会话（options.closeSessionOnClose，默认 false）
+    newSessionOnLauncherOpen: false, // 从悬浮按钮打开抽屉时是否重新开启新会话（options.newSessionOnLauncherOpen，默认 false）
+  }
 }
 ```
 
-由 iframe 页面按配置执行（抽屉关闭时是否结束当前 agent 会话）。
+由 iframe 页面按配置执行（抽屉关闭时是否结束当前 agent 会话、从悬浮按钮打开时是否重新开启新会话——配合显隐消息的 `openSource` 判断打开方式）。
 
 **iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，固定消息除第 2 条 `drawer-message`（业务消息，双向）外还有四种（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
 
