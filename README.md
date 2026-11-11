@@ -132,7 +132,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.sessionId` | `string` | 不传 | 会话 ID，传入时拼到路径上（`/center/thd/chat/{agentCode}/{sessionId}`），不传则不拼；**不传时 iframe 会生成 sessionId 并发回**（`receiveSessionId` 接收） |
 | `options.payload` | `{ message: string; files: {name, url, type}[] }` | 不传 | 预置消息/文件，iframe 加载完成后通过 postMessage 传给 iframe |
 | `options.width` | `number` | `500` | 初始宽度（px） |
-| `options.minWidth` | `number` | `200` | 最小宽度（px） |
+| `options.minWidth` | `number` | `500` | 最小宽度（px） |
 | `options.maxWidth` | `number` | 视口宽度 | 最大宽度（px） |
 | `options.mask` | `boolean` | `false` | 抽屉打开时是否给左侧页面区域加遮盖层（半透明遮罩，阻止操作宿主页；开启后点击遮盖层关闭抽屉） |
 

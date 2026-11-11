@@ -41,7 +41,7 @@ export interface DrawerOptions {
   payload?: DrawerPayload;
   /** 初始宽度（px），默认 500 */
   width?: number;
-  /** 最小宽度（px），默认 200 */
+  /** 最小宽度（px），默认 500 */
   minWidth?: number;
   /** 最大宽度（px），默认视口宽度 */
   maxWidth?: number;
@@ -156,7 +156,7 @@ const ENV_DOMAINS: Record<DrawerEnv, string> = {
   pro: 'http://lf18kg.life.cpic.com',
   local: 'http://localhost:4173',
 };
-const DEFAULT_MIN_WIDTH = 200;
+const DEFAULT_MIN_WIDTH = 500;
 /** 32 位有符号整数最大值，保证抽屉浮在接入方页面所有内容之上 */
 const Z_INDEX = 2147483647;
 /** 悬浮按钮略低于抽屉，抽屉打开时盖在按钮上方 */
