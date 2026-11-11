@@ -13,6 +13,7 @@
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
 - 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
 - 可选 `options.newSessionOnLauncherOpen`（默认 `false`）：控制**从悬浮按钮打开抽屉时是否重新开启新会话**；同样随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行
+- 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -71,6 +72,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     maskClosable: true, // 选填：点击遮盖层是否关闭抽屉（默认不关闭）
     closeSessionOnClose: true, // 选填：关闭抽屉时是否关闭当前 agent 会话（默认不关闭）
     newSessionOnLauncherOpen: true, // 选填：从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）
+    launcher: true, // 选填：是否生成悬浮图标入口（默认生成；false 时不生成，只用方法控制）
   });
 
   // 显隐通过返回的 DrawerHandle 控制
@@ -138,6 +140,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.maskClosable` | `boolean` | `false` | 开启遮盖层（`mask: true`）后，点击遮盖层是否关闭抽屉 |
 | `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否关闭当前 agent 会话；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
 | `options.newSessionOnLauncherOpen` | `boolean` | `false` | 从悬浮按钮打开抽屉时是否重新开启新会话；随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行 |
+| `options.launcher` | `boolean` | `true` | 是否生成悬浮图标入口（悬浮按钮）；`false` 时不生成悬浮按钮，抽屉只通过 `open()` / `sendMessage()` 等方法控制 |
 
 环境与站点域名映射（域名固化在组件内）：
 

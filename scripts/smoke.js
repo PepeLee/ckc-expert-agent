@@ -692,6 +692,25 @@ assert.deepStrictEqual(
 );
 dsm.destroy();
 
+// launcher: false：不生成悬浮图标入口（页面上没有悬浮按钮 DOM），抽屉仍可由 DrawerHandle 控制
+const dnl = createDrawer({ env: 'dev', token: 't-nl', agentCode: 'a-nl', launcher: false });
+assert.strictEqual(body.children.length, 0, 'launcher: false 时创建后不生成悬浮图标 DOM');
+assert.strictEqual(dnl.iframe, null);
+assert.strictEqual(dnl.isOpen, false);
+// 无悬浮图标时 open() 仍初始化并打开抽屉（页面上只有抽屉）
+dnl.open();
+assert.ok(dnl.iframe, '无悬浮图标时 open() 仍初始化抽屉');
+assert.strictEqual(dnl.isOpen, true, '无悬浮图标时 open() 仍打开抽屉');
+assert.strictEqual(body.children.length, 1, '打开后页面上只有抽屉（无悬浮按钮）');
+dnl.close();
+assert.strictEqual(body.children.length, 1, '关闭只隐藏，抽屉 DOM 仍在');
+// 无悬浮图标时 sendMessage 同样自动打开抽屉
+dnl.sendMessage({ message: '无入口也能发', files: [] });
+assert.strictEqual(dnl.isOpen, true, 'sendMessage 自动打开抽屉（不依赖悬浮图标）');
+assert.strictEqual(body.children.length, 1, 'sendMessage 不会重复创建 DOM');
+dnl.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
 // 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域；
 // 点击遮盖层默认不关闭（options.maskClosable 默认 false），maskClosable: true 时点击才关闭
 const dm = createDrawer({ env: 'dev', token: 'tm', agentCode: 'am', mask: true });

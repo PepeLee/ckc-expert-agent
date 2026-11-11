@@ -59,6 +59,8 @@ export interface DrawerOptions {
   /** 从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）；
    *  随配置消息（drawer-config）发给 iframe，由智能体页面结合打开方式（openSource）按此配置执行 */
   newSessionOnLauncherOpen?: boolean;
+  /** 是否生成悬浮图标入口（默认生成）；设为 false 时不生成悬浮按钮，抽屉只通过 DrawerHandle 的 open() / sendMessage() 等控制 */
+  launcher?: boolean;
 }
 
 /** 抽屉打开方式：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开） */
@@ -412,23 +414,26 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     // 保持 '*'
   }
 
-  // ---------- 悬浮圆形按钮 ----------
-  const launcherHost = document.createElement('div');
-  const launcherShadow = launcherHost.attachShadow({ mode: 'open' });
-  launcherShadow.innerHTML = `
+  // ---------- 悬浮圆形按钮（options.launcher === false 时不生成，抽屉只由 DrawerHandle 控制） ----------
+  let launcherHost: HTMLDivElement | null = null;
+  let btnX = Math.max(0, window.innerWidth - LAUNCHER_SIZE - LAUNCHER_MARGIN);
+  let btnY = Math.max(0, window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN);
+  const applyBtnPos = (): void => {
+    if (!launcherHost) return;
+    launcherHost.style.left = `${btnX}px`;
+    launcherHost.style.top = `${btnY}px`;
+  };
+  if (options.launcher !== false) {
+    launcherHost = document.createElement('div');
+    const launcherShadow = launcherHost.attachShadow({ mode: 'open' });
+    launcherShadow.innerHTML = `
     <style>${LAUNCHER_STYLES}</style>
     <button class="btn" type="button" aria-label="打开抽屉">
       ${LAUNCHER_ICON_SVG}
     </button>
   `;
-
-  let btnX = Math.max(0, window.innerWidth - LAUNCHER_SIZE - LAUNCHER_MARGIN);
-  let btnY = Math.max(0, window.innerHeight - LAUNCHER_SIZE - LAUNCHER_MARGIN);
-  const applyBtnPos = (): void => {
-    launcherHost.style.left = `${btnX}px`;
-    launcherHost.style.top = `${btnY}px`;
-  };
-  applyBtnPos();
+    applyBtnPos();
+  }
 
   // ---------- 抽屉（首次点击按钮时初始化） ----------
   let drawerHost: HTMLDivElement | null = null;
@@ -723,8 +728,9 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     notify(true);
   };
 
-  // 悬浮按钮：拖动可移动位置，单击打开抽屉（拖拽事件丢失兜底同左边框）
-  launcherHost.addEventListener('pointerdown', (e: PointerEvent) => {
+  // 悬浮按钮：拖动可移动位置，单击打开抽屉（拖拽事件丢失兜底同左边框；options.launcher === false 时不生成、不注册）
+  launcherHost?.addEventListener('pointerdown', (e: PointerEvent) => {
+    const host = launcherHost as HTMLDivElement;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     activeDragEnd?.();
@@ -735,13 +741,13 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     const origY = btnY;
     let moved = false;
     let ended = false;
-    launcherHost.classList.add('ckc-launcher--dragging');
+    host.classList.add('ckc-launcher--dragging');
     // 拖动期间 iframe 置为 pointer-events: none，move/up 不会被 iframe 吞掉
     const draggedFrame = frame;
     const prevPointerEvents = draggedFrame ? draggedFrame.style.pointerEvents : '';
     if (draggedFrame) draggedFrame.style.pointerEvents = 'none';
     try {
-      launcherHost.setPointerCapture(pointerId);
+      host.setPointerCapture(pointerId);
     } catch {
       // 个别环境不支持指针捕获，靠 window 监听兜底
     }
@@ -763,10 +769,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     function endDrag(isPointerUp: boolean): void {
       if (ended) return;
       ended = true;
-      launcherHost.classList.remove('ckc-launcher--dragging');
+      host.classList.remove('ckc-launcher--dragging');
       if (draggedFrame) draggedFrame.style.pointerEvents = prevPointerEvents;
-      if (launcherHost.hasPointerCapture(pointerId)) {
-        launcherHost.releasePointerCapture(pointerId);
+      if (host.hasPointerCapture(pointerId)) {
+        host.releasePointerCapture(pointerId);
       }
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onPointerUp);
@@ -795,7 +801,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     document.addEventListener('visibilitychange', onVisibilityChange);
   });
 
-  (document.body ?? document.documentElement).appendChild(launcherHost);
+  if (launcherHost) (document.body ?? document.documentElement).appendChild(launcherHost);
 
   const sendMessage = (payload: DrawerPayload): void => {
     if (destroyed) return;
@@ -866,7 +872,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       sessionHandlers.clear();
       visibilityHandlers.clear();
       pendingMessages.length = 0;
-      launcherHost.remove();
+      launcherHost?.remove();
       drawerHost?.remove();
       drawerHost = null;
       maskHost?.remove();
