@@ -261,7 +261,8 @@ assert.strictEqual(loaderTimer.ms, 10000);
 assert.strictEqual(loaderTimer.cleared, false);
 
 // sendMessage 在 iframe 就绪前调用：排队，就绪后补发
-drawer.sendMessage({ message: '早安', files: [] });
+// 可选 sessionId（唤起已有 agent 会话）/ directSend（是否直接发送）随消息原样传到 iframe
+drawer.sendMessage({ message: '早安', files: [], sessionId: 'sess-old-00', directSend: true });
 
 const toFrame = (t) => frameMsgs.filter((m) => m.msg.type === t);
 
@@ -281,20 +282,31 @@ assert.deepStrictEqual(
 );
 assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
-  [{ message: '早安', files: [] }],
+  [{ message: '早安', files: [], sessionId: 'sess-old-00', directSend: true }],
 );
 assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), true, '收到 drawer-ready 后隐藏加载动画');
 assert.strictEqual(loaderTimer.cleared, true, '收到 drawer-ready 后取消兜底定时器');
 
 // iframe 加载后 sendMessage：立即直发固定协议消息
+// 可选 sessionId（唤起已有 agent 会话）/ directSend（是否直接发送）随消息原样传到 iframe
 const sendPayload = {
   message: '你好',
   files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+  sessionId: 'sess-old-01',
+  directSend: true,
 };
 drawer.sendMessage(sendPayload);
 assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
-  [{ message: '早安', files: [] }, sendPayload],
+  [
+    { message: '早安', files: [], sessionId: 'sess-old-00', directSend: true },
+    {
+      message: '你好',
+      files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+      sessionId: 'sess-old-01',
+      directSend: true,
+    },
+  ],
 );
 assert.ok(
   toFrame('drawer-message').every((m) => m.targetOrigin === 'http://lf18kg-dev.life.cpic.com'),

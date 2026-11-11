@@ -35,6 +35,8 @@ sendBtn.addEventListener('click', () =>
   drawer.sendMessage({
     message: '你好',
     files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+    sessionId: 'demo-session', // 选填：唤起（续接）已有的 agent 会话
+    directSend: true, // 选填：是否直接发送
   }),
 );
 document.body.appendChild(sendBtn);

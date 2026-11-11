@@ -16,6 +16,10 @@ export interface DrawerPayload {
   message: string;
   /** 附件文件列表 */
   files: DrawerFile[];
+  /** 会话 ID（选填）：用于唤起（续接）已有的 agent 会话，随消息原样传到 iframe */
+  sessionId?: string;
+  /** 是否直接发送（选填）：随消息原样传到 iframe，由智能体页面决定如何处理 */
+  directSend?: boolean;
 }
 
 /** receiveMessage 回调收到的消息：在 DrawerPayload 基础上可附带其它自定义字段，原样透传 */
@@ -60,7 +64,7 @@ export interface DrawerVisibilityMessage {
 
 /**
  * 业务消息（固定协议 drawer-message，双向）：
- * 宿主经 drawer.sendMessage() 发给 iframe（payload 为 DrawerPayload：{message, files}）；
+ * 宿主经 drawer.sendMessage() 发给 iframe（payload 为 DrawerPayload：{message, files, sessionId?, directSend?}）；
  * iframe 也可发给宿主（payload 为 DrawerMessagePayload：{message, files, sessionId?, ...其它附带字段}），由 drawer.receiveMessage() 接收。
  */
 export interface DrawerMessage {
@@ -131,7 +135,9 @@ export interface DrawerHandle {
   close(): void;
   /** 设置抽屉宽度（px，自动限制在 min/max 之间） */
   setWidth(width: number): void;
-  /** 向 iframe 发送一条消息（自动打开抽屉；固定协议 drawer-message；iframe 就绪前自动排队，就绪后按序补发） */
+  /** 向 iframe 发送一条消息（自动打开抽屉；固定协议 drawer-message；
+   *  payload 可附带可选 sessionId（唤起已有的 agent 会话）、directSend（是否直接发送），随消息原样传到 iframe；
+   *  iframe 就绪前自动排队，就绪后按序补发） */
   sendMessage(payload: DrawerPayload): void;
   /** 接收消息：iframe 发来业务消息（drawer-message，payload 为 {message, files, ...其它附带字段}）时回调，返回取消监听函数 */
   receiveMessage(handler: DrawerMessageHandler): () => void;

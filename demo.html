@@ -20,7 +20,7 @@
       <button onclick="drawer.open()">drawer.open() 打开</button>
       <button onclick="drawer.close()">drawer.close() 关闭</button>
       <button
-        onclick="drawer.sendMessage({ message: '你好', files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }] })"
+        onclick="drawer.sendMessage({ message: '你好', files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }], sessionId: 'demo-session', directSend: true })"
       >
         drawer.sendMessage() 发消息给 iframe
       </button>
