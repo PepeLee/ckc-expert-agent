@@ -315,6 +315,7 @@ assert.ok(
 const artifactMsg = {
   message: '分析完成',
   files: [{ name: 'report.pdf', url: 'https://example.com/report.pdf', type: 'pdf' }],
+  sessionId: 'sess-gen-01', // 可选会话 ID，原样透传
   score: 95, // 其它附带字段，原样透传
 };
 dispatchWindowMessage(frame.contentWindow, {

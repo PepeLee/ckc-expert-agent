@@ -174,10 +174,11 @@
           }
           if (d.type === 'drawer-init') {
             log('in', 'drawer-init（预置 payload）', d.payload);
-            // 把预置内容作为消息回执给宿主页，演示 receiveMessage（{message, files, ...其它附带字段}）
+            // 把预置内容作为消息回执给宿主页，演示 receiveMessage（{message, files, sessionId?, ...其它附带字段}）
             var reply = {
               message: '已收到预置消息',
               files: (d.payload && d.payload.files) || [],
+              sessionId: sessionId, // 附带会话 ID，验证宿主 receiveMessage 能收到 sessionId
               ts: Date.now(), // 其它附带字段，原样透传
             };
             parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-message', payload: reply }, '*');
@@ -195,7 +196,7 @@
           }
         });
 
-        // ---- 发消息给宿主页（固定协议 drawer-message，payload 为 {message, files, ...其它附带字段}）----
+        // ---- 发消息给宿主页（固定协议 drawer-message，payload 为 {message, files, sessionId?, ...其它附带字段}）----
         document.getElementById('send').addEventListener('click', function () {
           var msg = {
             message: '分析完成：' + (input.value || '产物文件.pdf'),
@@ -206,6 +207,7 @@
                 type: 'pdf',
               },
             ],
+            sessionId: sessionId, // 附带会话 ID，验证宿主 receiveMessage 能收到 sessionId
             ts: Date.now(), // 其它附带字段，原样透传
           };
           parent.postMessage(

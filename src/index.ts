@@ -20,6 +20,8 @@ export interface DrawerPayload {
 
 /** receiveMessage 回调收到的消息：在 DrawerPayload 基础上可附带其它自定义字段，原样透传 */
 export interface DrawerMessagePayload extends DrawerPayload {
+  /** 会话 ID（选填）：iframe 发消息时可附带当前会话的 sessionId */
+  sessionId?: string;
   /** 其它附带字段：iframe 侧自定义附加数据，原样透传 */
   [key: string]: any;
 }
@@ -68,7 +70,7 @@ export interface DrawerInitMessage {
 /**
  * 业务消息（固定协议 drawer-message，双向）：
  * 宿主经 drawer.sendMessage() 发给 iframe（payload 为 DrawerPayload：{message, files}）；
- * iframe 也可发给宿主（payload 为 DrawerMessagePayload：{message, files, ...其它附带字段}），由 drawer.receiveMessage() 接收。
+ * iframe 也可发给宿主（payload 为 DrawerMessagePayload：{message, files, sessionId?, ...其它附带字段}），由 drawer.receiveMessage() 接收。
  */
 export interface DrawerMessage {
   source: 'ckc-expert-agent';

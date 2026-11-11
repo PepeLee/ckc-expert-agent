@@ -88,7 +88,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 
   // 接收 iframe 发来的消息 / sessionId / 显隐变化：宿主不需要自己监听 message 事件
   drawer.receiveMessage(function (message) {
-    // message: { message, files, ...其它附带字段 }
+    // message: { message, files, sessionId?, ...其它附带字段 }
     console.log('收到消息', message);
   });
   drawer.receiveSessionId(function (sessionId) {
@@ -157,7 +157,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |
 | `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files}`；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发） |
-| `receiveMessage(handler)` | 接收消息：iframe 发来业务消息（`drawer-message`，payload 为 `{message, files, ...其它附带字段}`）时回调，返回取消监听函数 |
+| `receiveMessage(handler)` | 接收消息：iframe 发来业务消息（`drawer-message`，payload 为 `{message, files, sessionId?, ...其它附带字段}`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
 | `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数 |
 | `destroy()` | 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 |
@@ -188,7 +188,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
-**3. 业务消息（双向）**：宿主调用 `drawer.sendMessage(payload)` 时发给 iframe，payload 为 `{message, files}`；iframe 发同类型消息给宿主时由 `drawer.receiveMessage(handler)` 接收，payload 为 `{message, files, ...其它附带字段}`（附带字段原样透传；`message` 不是字符串或 `files` 不是 `DrawerFile[]` 的消息一律丢弃）：
+**3. 业务消息（双向）**：宿主调用 `drawer.sendMessage(payload)` 时发给 iframe，payload 为 `{message, files}`；iframe 发同类型消息给宿主时由 `drawer.receiveMessage(handler)` 接收，payload 为 `{message, files, sessionId?, ...其它附带字段}`（`sessionId` 为可选会话 ID，其它附带字段原样透传；`message` 不是字符串或 `files` 不是 `DrawerFile[]` 的消息一律丢弃）：
 
 ```js
 {
