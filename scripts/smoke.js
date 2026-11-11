@@ -274,8 +274,18 @@ dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-ready' });
 dispatchWindowMessage(frame.contentWindow, { source: 'other', type: 'drawer-ready' });
 assert.strictEqual(toFrame('drawer-visibility-change').length, 0);
 
-// iframe 发来 drawer-ready（就绪消息）：发当前显隐，再补发排队的 sendMessage
+// iframe 发来 drawer-ready（就绪消息）：先发配置（closeSessionOnClose），再发当前显隐，最后补发排队的 sendMessage
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.deepStrictEqual(
+  toFrame('drawer-config').map((m) => m.msg.payload),
+  [{ closeSessionOnClose: false }],
+  'drawer-ready 后发送配置消息（closeSessionOnClose 未传默认 false）',
+);
+assert.ok(
+  frameMsgs.findIndex((m) => m.msg.type === 'drawer-config') <
+    frameMsgs.findIndex((m) => m.msg.type === 'drawer-visibility-change'),
+  '配置消息先于显隐消息发送',
+);
 assert.deepStrictEqual(
   toFrame('drawer-visibility-change').map((m) => m.msg.visible),
   [true],
@@ -530,8 +540,9 @@ assert.doesNotThrow(() => drawer.open());
 frame.contentWindow.postMessage = origPost;
 assert.strictEqual(toFrame('drawer-message').length, 2, '发送失败的消息不计入已发消息');
 
-// iframe 重新初始化（如刷新后）再次发就绪消息：补发当前显隐和失败的 sendMessage
+// iframe 重新初始化（如刷新后）再次发就绪消息：重新发配置，补发当前显隐和失败的 sendMessage
 dispatchWindowMessage(frame.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.strictEqual(toFrame('drawer-config').length, 2, '重新就绪后重新发送配置消息');
 assert.strictEqual(toFrame('drawer-message').length, 3, '发送失败的 sendMessage 就绪后补发');
 assert.deepStrictEqual(toFrame('drawer-message').map((m) => m.msg.payload)[2], {
   message: '弱网时的消息',
@@ -629,6 +640,21 @@ dsa.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后移除全部 DOM');
 dsa.sendMessage({ message: '销毁后', files: [] });
 assert.strictEqual(body.children.length, 0, '销毁后 sendMessage 不再动作（不自动打开）');
+
+// DrawerOptions.closeSessionOnClose：drawer-ready 后把该配置发给 iframe（关闭抽屉时是否关闭当前 agent 会话）
+const dcfg = createDrawer({ env: 'dev', token: 't-cfg', agentCode: 'a-cfg', closeSessionOnClose: true });
+dcfg.open();
+const cfgMsgsBefore = frameMsgs.length;
+dispatchWindowMessage(dcfg.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.deepStrictEqual(
+  frameMsgs
+    .slice(cfgMsgsBefore)
+    .filter((m) => m.msg.type === 'drawer-config')
+    .map((m) => m.msg.payload),
+  [{ closeSessionOnClose: true }],
+  'closeSessionOnClose: true 时配置随 drawer-ready 后发给 iframe',
+);
+dcfg.destroy();
 
 // 遮盖层（options.mask）：开启后抽屉打开时盖住左侧页面区域；
 // 点击遮盖层默认不关闭（options.maskClosable 默认 false），maskClosable: true 时点击才关闭

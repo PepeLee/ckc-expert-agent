@@ -11,6 +11,7 @@
 - 抽屉本身**不带关闭按钮**：iframe 页面在自己的 header 上提供**全屏**和**关闭**按钮，通过固定协议控制抽屉——全屏按钮发 `drawer-fullscreen`（抽屉宽度变为最大值，按钮变为「取消全屏」，再点恢复默认宽度），关闭按钮发 `drawer-close`（只把抽屉**移出视口**，`transform` 平移隐藏、不销毁 iframe，**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**）；再次点击悬浮按钮重新显示，宿主也可用 `drawer.close()` 关闭
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe（**自动打开抽屉**，未就绪自动排队、就绪后补发）、`drawer.receiveMessage()` 接收 iframe 发来的消息、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
+- 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -67,6 +68,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     sessionId: 'sess-01', // 选填
     mask: true, // 选填：是否给左侧页面区域加遮盖层
     maskClosable: true, // 选填：点击遮盖层是否关闭抽屉（默认不关闭）
+    closeSessionOnClose: true, // 选填：关闭抽屉时是否关闭当前 agent 会话（默认不关闭）
   });
 
   // 显隐通过返回的 DrawerHandle 控制
@@ -132,6 +134,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.maxWidth` | `number` | 视口宽度 | 最大宽度（px） |
 | `options.mask` | `boolean` | `false` | 抽屉打开时是否给左侧页面区域加遮盖层（半透明遮罩，阻止操作宿主页） |
 | `options.maskClosable` | `boolean` | `false` | 开启遮盖层（`mask: true`）后，点击遮盖层是否关闭抽屉 |
+| `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否关闭当前 agent 会话；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
 
 环境与站点域名映射（域名固化在组件内）：
 
@@ -185,9 +188,21 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 }
 ```
 
+**3. 配置消息**（`drawer-config`）：宿主收到就绪消息（`drawer-ready`）后发出（iframe 刷新/重新初始化后再次发送），把创建时的 `DrawerOptions` 配置告知 iframe：
+
+```js
+{
+  source: 'ckc-expert-agent',
+  type: 'drawer-config',
+  payload: { closeSessionOnClose: false } // 关闭抽屉时是否关闭当前 agent 会话（options.closeSessionOnClose，默认 false）
+}
+```
+
+由 iframe 页面按配置执行（抽屉关闭时是否结束当前 agent 会话）。
+
 **iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，固定消息除第 2 条 `drawer-message`（业务消息，双向）外还有四种（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
 
-**3. 就绪消息**（`drawer-ready`）：iframe 页面**初始化完成后必须发出**（不带 payload），宿主以此判定 iframe 加载成功（**不以 `load` 事件判断**）：
+**4. 就绪消息**（`drawer-ready`）：iframe 页面**初始化完成后必须发出**（不带 payload），宿主以此判定 iframe 加载成功（**不以 `load` 事件判断**）：
 
 ```js
 {
@@ -198,7 +213,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 宿主收到后发送当前显隐状态，并补发排队的 `drawer-message`；iframe 刷新/重新初始化后应**再次发送**，宿主会重新补发上述消息。
 
-**4. sessionId 消息**（`drawer-session`）：宿主在 `DrawerOptions` **未传 `sessionId`** 时，iframe 会生成一个 sessionId 并发出，payload 为该 sessionId 字符串：
+**5. sessionId 消息**（`drawer-session`）：宿主在 `DrawerOptions` **未传 `sessionId`** 时，iframe 会生成一个 sessionId 并发出，payload 为该 sessionId 字符串：
 
 ```js
 {
@@ -210,7 +225,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 宿主通过 `drawer.receiveSessionId(handler)` 接收处理（如持久化下来，下次调用 `createCkcDrawer` 时通过 `options.sessionId` 传入续接同一会话）。
 
-**5. 全屏消息**（`drawer-fullscreen`）：iframe 页面（如 header 上的全屏按钮）请求调整抽屉宽度时发出：
+**6. 全屏消息**（`drawer-fullscreen`）：iframe 页面（如 header 上的全屏按钮）请求调整抽屉宽度时发出：
 
 ```js
 {
@@ -222,7 +237,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 组件内部消费该消息直接调整抽屉宽度，不派发给宿主回调；`fullscreen` 非布尔值时忽略。
 
-**6. 关闭消息**（`drawer-close`）：iframe 页面（如 header 上的关闭按钮）请求关闭抽屉时发出（不带 payload）：
+**7. 关闭消息**（`drawer-close`）：iframe 页面（如 header 上的关闭按钮）请求关闭抽屉时发出（不带 payload）：
 
 ```js
 {
@@ -237,4 +252,4 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 由于关闭抽屉只是隐藏、iframe 不会被销毁，iframe 内容在隐藏期间照常运行，随时可以按上述协议 `postMessage` 出来，宿主的 `receiveMessage` / `receiveSessionId` 照常收到。
 
-**投递保证**：iframe 加载是否成功由 iframe 主动发 `drawer-ready` 就绪消息判定（组件**不以 `load` 事件判断**，`about:blank` / 浏览器错误页触发的 `load` 不会误判为成功）；收到就绪消息前，发往 iframe 的消息（`drawer-visibility-change` / `drawer-message`）只排队不发送，就绪后按序补发（当前显隐 → 排队消息）。若 `postMessage` 失败（如 iframe 停在 `about:blank` / 浏览器错误页，origin 为 `'null'`），组件内部捕获该异常（不抛给宿主，只 `console.warn`），消息保留待 iframe 重新就绪后补发。若消息始终到不了 iframe，请检查：① **iframe 页面是否已实现就绪消息（`drawer-ready`）**；② 站点是否允许被内嵌（响应头 `X-Frame-Options` / `Content-Security-Policy: frame-ancestors`）；③ 宿主所在网络（如云桌面）能否访问对应环境域名；④ 浏览器控制台是否有 iframe 加载被拒绝的报错。
+**投递保证**：iframe 加载是否成功由 iframe 主动发 `drawer-ready` 就绪消息判定（组件**不以 `load` 事件判断**，`about:blank` / 浏览器错误页触发的 `load` 不会误判为成功）；收到就绪消息前，发往 iframe 的消息（`drawer-visibility-change` / `drawer-message`）只排队不发送，就绪后按序补发（配置消息 → 当前显隐 → 排队消息）；配置消息（`drawer-config`）不排队，每次收到就绪消息时按当前配置直接发一份。若 `postMessage` 失败（如 iframe 停在 `about:blank` / 浏览器错误页，origin 为 `'null'`），组件内部捕获该异常（不抛给宿主，只 `console.warn`），消息保留待 iframe 重新就绪后补发。若消息始终到不了 iframe，请检查：① **iframe 页面是否已实现就绪消息（`drawer-ready`）**；② 站点是否允许被内嵌（响应头 `X-Frame-Options` / `Content-Security-Policy: frame-ancestors`）；③ 宿主所在网络（如云桌面）能否访问对应环境域名；④ 浏览器控制台是否有 iframe 加载被拒绝的报错。

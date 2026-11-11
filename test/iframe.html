@@ -183,6 +183,8 @@
             };
             parent.postMessage({ source: 'ckc-expert-agent', type: 'drawer-message', payload: reply }, '*');
             log('out', '消息（回执给宿主）', reply);
+          } else if (d.type === 'drawer-config') {
+            log('in', 'drawer-config（组件配置，关闭抽屉时是否关闭当前 agent 会话）', d.payload);
           } else if (d.type === 'drawer-visibility-change') {
             log('in', '抽屉显隐', { visible: d.visible });
             stateEl.textContent = d.visible

@@ -53,6 +53,9 @@ export interface DrawerOptions {
   mask?: boolean;
   /** 开启遮盖层（mask: true）后，点击遮盖层是否关闭抽屉（默认不关闭） */
   maskClosable?: boolean;
+  /** 关闭抽屉时是否关闭当前 agent 会话（默认不关闭）；
+   *  收到 iframe 的 drawer-ready 就绪消息后随配置消息（drawer-config）发给 iframe，由智能体页面按此配置执行 */
+  closeSessionOnClose?: boolean;
 }
 
 /** 抽屉显隐变化时发给 iframe 的消息（宿主侧通过 onVisibilityChange 回调感知） */
@@ -60,6 +63,21 @@ export interface DrawerVisibilityMessage {
   source: 'ckc-expert-agent';
   type: 'drawer-visibility-change';
   visible: boolean;
+}
+
+/**
+ * 宿主发给 iframe 的配置消息（type: drawer-config）：
+ * 收到 iframe 的 drawer-ready 就绪消息后发出（iframe 刷新/重新初始化后再次发送），
+ * 告知创建时的 DrawerOptions 配置，由 iframe 页面按配置执行。
+ */
+export interface DrawerConfigMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-config';
+  /** 配置项 */
+  payload: {
+    /** 关闭抽屉时是否关闭当前 agent 会话 */
+    closeSessionOnClose: boolean;
+  };
 }
 
 /**
@@ -427,8 +445,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (drawerHost) drawerHost.style.width = `${width}px`;
   };
 
-  // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-message（双向） /
-  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 六种，
+  // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-config / drawer-message（双向） /
+  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 七种，
   // 宿主统一用 sendMessage / receiveMessage / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
   // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
@@ -479,7 +497,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * 这里统一捕获，消息保留待 iframe 重新就绪（再发 drawer-ready）后补发，绝不把异常抛给宿主。
    */
   const postToFrame = (
-    msg: DrawerVisibilityMessage | DrawerMessage,
+    msg: DrawerVisibilityMessage | DrawerConfigMessage | DrawerMessage,
   ): boolean => {
     const target = frame?.contentWindow;
     if (!target) return false;
@@ -492,16 +510,16 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     }
   };
 
-  /**
-   * iframe 发来 drawer-ready（就绪消息）后补发一轮：
-   * 1) 当前显隐状态；2) 排队/发送失败的 sendMessage 消息。
-   * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到当前状态。
-   */
   /** 隐藏加载动画（iframe 就绪或超时兜底时调用） */
   const hideLoader = (): void => {
     drawerHost?.shadowRoot?.querySelector('.loader')?.classList.add('ckc-loader--hidden');
   };
 
+  /**
+   * iframe 发来 drawer-ready（就绪消息）后补发一轮：
+   * 1) 配置消息（drawer-config，含 closeSessionOnClose）；2) 当前显隐状态；3) 排队/发送失败的 sendMessage 消息。
+   * iframe 刷新/重新初始化后会再次发就绪消息，这里同样重新补发，保证新文档拿到当前状态。
+   */
   const onFrameReady = (): void => {
     frameReady = true;
     // iframe 已就绪：隐藏加载动画（就绪前显示，避免抽屉长时间空白）
@@ -510,6 +528,12 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
+    // 先发配置（关闭抽屉时是否关闭当前 agent 会话），再发当前显隐，最后补发排队消息
+    postToFrame({
+      source: 'ckc-expert-agent',
+      type: 'drawer-config',
+      payload: { closeSessionOnClose: options.closeSessionOnClose === true },
+    });
     postToFrame({
       source: 'ckc-expert-agent',
       type: 'drawer-visibility-change',
