@@ -148,16 +148,32 @@ export interface DrawerCloseMessage {
   type: 'drawer-close';
 }
 
+/**
+ * iframe 发给宿主的会话状态消息（type: drawer-session-state）：
+ * sessionActive 表示当前 iframe 的 agent 是否处于正在会话状态（true=正在会话中）。
+ * iframe 初始化完成后上报当前状态，状态变化时再次上报；
+ * 组件内部缓存该状态，随 onVisibilityChange 回调的第二参 sessionActive 带给宿主，不单独派发回调。
+ */
+export interface DrawerSessionStateMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-session-state';
+  sessionActive: boolean;
+}
+
 /** receiveSessionId 回调：接收 iframe 生成的 sessionId */
 export type DrawerSessionHandler = (sessionId: string) => void;
 
 /**
- * onVisibilityChange 回调：抽屉显示/隐藏变化（在显隐生效前触发，visible 为本次请求的显隐）。
+ * onVisibilityChange 回调：抽屉显示/隐藏变化（在显隐生效前触发，visible 为本次请求的显隐；
+ * sessionActive 为当前 iframe 的 agent 是否处于正在会话状态，由 iframe 上报，未上报时为 false）。
  * 默认不返回值：抽屉照常直接显示/隐藏；
  * 返回布尔值或 Promise<boolean> 可自行控制本次显隐（返回值即最终状态：true=显示 / false=隐藏），
  * 多个回调时按注册顺序以第一个明确的布尔值为准；抛错 / Promise 被拒绝按默认显隐处理。
  */
-export type DrawerVisibilityHandler = (visible: boolean) => void | boolean | Promise<boolean | void>;
+export type DrawerVisibilityHandler = (
+  visible: boolean,
+  sessionActive: boolean,
+) => void | boolean | Promise<boolean | void>;
 
 export interface DrawerHandle {
   /** 抽屉内的 iframe 元素，首次打开抽屉前为 null */
@@ -179,7 +195,8 @@ export interface DrawerHandle {
   /** 接收 sessionId：宿主未传 options.sessionId 时 iframe 生成并发出（drawer-session），宿主在此接收处理，返回取消监听函数 */
   receiveSessionId(handler: DrawerSessionHandler): () => void;
   /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数；
-   *  回调在显隐生效前触发（visible 为请求的显隐），不返回值时按默认直接显示/隐藏，
+   *  回调在显隐生效前触发（visible 为请求的显隐，第二参 sessionActive 为当前 iframe 的 agent
+   *  是否处于正在会话状态），不返回值时按默认直接显示/隐藏，
    *  返回布尔值或 Promise<boolean> 可自行控制最终显隐（true=显示 / false=隐藏） */
   onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
@@ -453,6 +470,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let destroyed = false;
   /** iframe 就绪：已收到 iframe 的 drawer-ready 就绪消息（不以 load 事件判断加载成功）；此前 sendMessage/显隐排队，此后直发 */
   let frameReady = false;
+  /** 当前 iframe 的 agent 是否处于正在会话状态（由 iframe 发 drawer-session-state 上报，未上报时为 false） */
+  let sessionActive = false;
   /** 加载动画兜底定时器：超时未收到 drawer-ready 时停止动画 */
   let loaderFallbackTimer: ReturnType<typeof setTimeout> | null = null;
   /** 当前进行中的拖拽收尾函数（左边框调宽 / 悬浮按钮拖动），新拖拽或销毁前强制收尾，防事件丢失卡死 */
@@ -470,7 +489,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   };
 
   // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-config / drawer-message（双向） /
-  // drawer-ready / drawer-session / drawer-fullscreen / drawer-close 七种，
+  // drawer-ready / drawer-session / drawer-session-state / drawer-fullscreen / drawer-close 八种，
   // 宿主统一用 sendMessage / receiveMessage / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
   // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
@@ -480,6 +499,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       type?: string;
       payload?: unknown;
       fullscreen?: unknown;
+      sessionActive?: unknown;
     } | null;
     if (!data || data.source !== 'ckc-expert-agent') return;
     if (data.type === 'drawer-ready') {
@@ -501,6 +521,11 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       const sessionId = data.payload;
       if (typeof sessionId !== 'string' || sessionId === '') return;
       for (const handler of [...sessionHandlers]) handler(sessionId);
+    } else if (data.type === 'drawer-session-state') {
+      // iframe 上报 agent 会话状态（是否正在会话）：只缓存，随 onVisibilityChange 回调第二参带给宿主
+      const active = data.sessionActive;
+      if (typeof active !== 'boolean') return;
+      sessionActive = active;
     } else if (data.type === 'drawer-fullscreen') {
       // iframe 内全屏按钮：true 调到最大宽度，false 恢复默认宽度（组件内部消费，不派发给宿主回调）
       const fullscreen = data.fullscreen;
@@ -584,7 +609,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     const results: unknown[] = [];
     for (const handler of [...visibilityHandlers]) {
       try {
-        const r: unknown = handler(v);
+        const r: unknown = handler(v, sessionActive);
         if (r && typeof (r as PromiseLike<unknown>).then === 'function') {
           // 拒绝按默认显隐处理（转为中立值）：notify（destroy）路径丢弃返回值也不会产生未处理的 Promise 拒绝
           results.push(

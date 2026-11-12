@@ -78,14 +78,19 @@
 
       // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）
       // 不返回值：抽屉直接显示/隐藏（默认）；返回布尔值或 Promise<boolean>（true=显示 / false=隐藏）可自行控制本次显隐
-      drawer.onVisibilityChange(function (visible) {
+      // 第二参 sessionActive：当前 iframe 的 agent 是否处于正在会话状态（true=正在会话中）
+      drawer.onVisibilityChange(function (visible, sessionActive) {
         if (visible) {
           logMsg('抽屉显示');
           return; // 请求显示：不返回值，按默认直接显示
         }
-        // 示例：关闭前弹确认框（onVisibilityChange 返回 Promise<boolean> 自行控制显隐）
+        if (!sessionActive) {
+          logMsg('抽屉隐藏');
+          return; // 不在会话状态：直接关闭，无需确认
+        }
+        // 会话状态：关闭前弹确认框（onVisibilityChange 返回 Promise<boolean> 自行控制显隐）
         return new Promise(function (resolve) {
-          if (window.confirm('确定要关闭抽屉吗？')) {
+          if (window.confirm('当前正在会话中，确定要关闭抽屉吗？')) {
             logMsg('确认关闭：抽屉隐藏');
             resolve(false); // 最终显隐 = 隐藏
           } else {

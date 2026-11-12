@@ -14,7 +14,7 @@
 - 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
 - 可选 `options.newSessionOnLauncherOpen`（默认 `false`）：控制**从悬浮按钮打开抽屉时是否重新开启新会话**；同样随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行
 - 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
-- **显隐默认直接执行**（打开/关闭立即生效）；`onVisibilityChange` 回调也可**自行控制显隐**：回调在显隐生效前触发（参数为请求的显隐），返回布尔值或 `Promise<boolean>` 接管本次显隐（**返回值即最终状态：`true`=显示 / `false`=隐藏**），不返回（或返回非布尔）则按默认直接显示/隐藏；回调返回 `Promise` 时显隐在结算后生效（期间新的显隐请求 / `destroy()` 会取消本次结果），多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / 拒绝按默认处理
+- **显隐默认直接执行**（打开/关闭立即生效）；`onVisibilityChange` 回调也可**自行控制显隐**：回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为**当前 iframe 的 agent 是否处于正在会话状态**，由 iframe 发 `drawer-session-state` 上报、组件缓存），返回布尔值或 `Promise<boolean>` 接管本次显隐（**返回值即最终状态：`true`=显示 / `false`=隐藏**），不返回（或返回非布尔）则按默认直接显示/隐藏；回调返回 `Promise` 时显隐在结算后生效（期间新的显隐请求 / `destroy()` 会取消本次结果），多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / 拒绝按默认处理
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
@@ -42,7 +42,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 2. 打开 `http://localhost:4173/`，点击悬浮按钮打开抽屉
 3. 抽屉 iframe 加载 `http://localhost:4173/center/thd/chat/:agentCode[/:sessionId]?token=xxx`，由服务器命中 [test/iframe.html](test/iframe.html)
 4. 测试页加载后先发**就绪消息**（`drawer-ready`，宿主收到后才补发显隐和排队消息），并展示 URL 参数（agentCode / sessionId / token）、记录收到的显隐消息；宿主 `sendMessage` 发来的消息（`drawer-message`）测试页会回执一条消息（`drawer-message`，payload 为 `{message, files, sessionId, ...}`）给宿主页（宿主页通过 `receiveMessage` 记录，日志同步显示）；未传 `sessionId` 时测试页会生成并回传（`drawer-session`），宿主页通过 `receiveSessionId` 显示
-5. 测试页 header 上有**全屏**和**关闭**按钮：全屏按钮发 `drawer-fullscreen` 让抽屉宽度变为最大值（再点变回「取消全屏」恢复默认宽度），关闭按钮发 `drawer-close` 关闭抽屉（只隐藏不销毁），可直接体验这两个控制消息的效果
+5. 测试页 header 上有**会话状态**、**全屏**和**关闭**按钮：会话状态按钮模拟切换 agent 空闲/会话中并上报（`drawer-session-state`，宿主 `onVisibilityChange` 回调第二参收到），全屏按钮发 `drawer-fullscreen` 让抽屉宽度变为最大值（再点变回「取消全屏」恢复默认宽度），关闭按钮发 `drawer-close` 关闭抽屉（只隐藏不销毁），可直接体验这三个消息的效果
 
 注意：`local` 域名固化为 `http://localhost:4173`，如用 `PORT` 覆盖服务端口，需同步修改组件内 `ENV_DOMAINS`。
 
@@ -97,10 +97,11 @@ npm run test:server  # 启动本地服务 http://localhost:4173
   drawer.receiveSessionId(function (sessionId) {
     console.log('iframe 生成的 sessionId', sessionId); // 可持久化，下次经 options.sessionId 传入续接会话
   });
-  drawer.onVisibilityChange(function (visible) {
+  drawer.onVisibilityChange(function (visible, sessionActive) {
+    // visible：本次请求的显隐；sessionActive：当前 iframe 的 agent 是否处于正在会话状态
     // 不返回值：按默认直接显示/隐藏；
     // 返回布尔值或 Promise<boolean>（true=显示 / false=隐藏）可自行控制本次显隐
-    console.log('抽屉', visible ? '显示' : '隐藏');
+    console.log('抽屉', visible ? '显示' : '隐藏', '会话中:', sessionActive);
   });
 
   // 彻底销毁（移除悬浮按钮和抽屉）
@@ -166,7 +167,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files, sessionId?, directSend?}`——后两个可选：`sessionId` 用于唤起已有的 agent 会话、`directSend` 表示是否直接发送，均随消息原样传到 iframe）；**调用时自动打开抽屉**（未初始化则初始化 iframe）；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发 |
 | `receiveMessage(handler)` | 接收消息：iframe 发来业务消息（`drawer-message`，payload 为 `{message, files, sessionId?, ...其它附带字段}`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
-| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数；回调在显隐生效前触发（参数为请求的显隐），不返回值按默认直接显示/隐藏，**返回布尔值或 `Promise<boolean>` 自行控制最终显隐（`true`=显示 / `false`=隐藏）**；多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / Promise 拒绝按默认处理，`destroy()` 不受控制 |
+| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数；回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为当前 iframe 的 agent 是否处于正在会话状态，由 iframe 发 `drawer-session-state` 上报），不返回值按默认直接显示/隐藏，**返回布尔值或 `Promise<boolean>` 自行控制最终显隐（`true`=显示 / `false`=隐藏）**；多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / Promise 拒绝按默认处理，`destroy()` 不受控制 |
 | `destroy()` | 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 |
 
 ## 消息协议（固定）
@@ -215,7 +216,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 
 由 iframe 页面按配置执行（抽屉关闭时是否结束当前 agent 会话、从悬浮按钮打开时是否重新开启新会话——配合显隐消息的 `openSource` 判断打开方式）。
 
-**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，固定消息除第 2 条 `drawer-message`（业务消息，双向）外还有四种（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
+**iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，固定消息除第 2 条 `drawer-message`（业务消息，双向）外还有五种（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
 
 **4. 就绪消息**（`drawer-ready`）：iframe 页面**初始化完成后必须发出**（不带 payload），宿主以此判定 iframe 加载成功（**不以 `load` 事件判断**）：
 
@@ -262,6 +263,18 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 ```
 
 组件内部消费该消息，行为与 `drawer.close()` 一致：只隐藏抽屉（移出视口，不销毁），iframe 继续运行；宿主的 `onVisibilityChange` 会收到 `false`。
+
+**8. 会话状态消息**（`drawer-session-state`）：iframe 页面上报**当前 agent 是否处于正在会话状态**（初始化完成后上报当前状态，状态变化时再次上报；iframe 刷新/重新初始化后重新上报）：
+
+```js
+{
+  source: 'ckc-expert-agent',
+  type: 'drawer-session-state',
+  sessionActive: true // true=正在会话状态，false=不在会话状态
+}
+```
+
+组件内部缓存该状态，随 `drawer.onVisibilityChange(handler)` 回调的第二参 `sessionActive` 带给宿主（如宿主按会话状态决定关闭抽屉前是否弹确认框），不单独派发回调；`sessionActive` 非布尔值的消息忽略。
 
 组件只接受本抽屉 `iframe.contentWindow` 发来的合规消息，其他消息一律丢弃；抽屉显隐变化由 `drawer.onVisibilityChange(handler)` 通知宿主（iframe 侧收到的仍是上面的显隐 postMessage）。
 

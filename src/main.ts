@@ -49,6 +49,6 @@ drawer.receiveMessage((message) => {
 drawer.receiveSessionId((sessionId) => {
   console.log('[host] 收到 iframe 生成的 sessionId:', sessionId);
 });
-drawer.onVisibilityChange((visible) => {
-  console.log('[host] 抽屉', visible ? '显示' : '隐藏');
+drawer.onVisibilityChange((visible, sessionActive) => {
+  console.log('[host] 抽屉', visible ? '显示' : '隐藏', '会话中:', sessionActive);
 });

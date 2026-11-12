@@ -739,6 +739,38 @@ assert.strictEqual(maskEl2.classList.contains('ckc-mask--hidden'), true, '关闭
 dmc.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后遮盖层一并移除');
 
+// 会话状态（iframe 发 drawer-session-state）：缓存后随 onVisibilityChange 回调第二参 sessionActive 带给宿主
+const dss = createDrawer({ env: 'dev', token: 't-ss', agentCode: 'a-ss' });
+const stSeen = [];
+dss.onVisibilityChange((v, sessionActive) => stSeen.push([v, sessionActive]));
+dss.open();
+assert.deepStrictEqual(stSeen, [[true, false]], 'iframe 未上报会话状态时回调第二参默认 false');
+dispatchWindowMessage(dss.iframe.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session-state',
+  sessionActive: true,
+});
+dss.close();
+assert.deepStrictEqual(
+  stSeen,
+  [
+    [true, false],
+    [false, true],
+  ],
+  'iframe 上报会话状态后回调第二参带上（打开 / 关闭都带）',
+);
+// 非法 / 来源不符的会话状态消息一律忽略，不影响已缓存的状态
+dispatchWindowMessage(dss.iframe.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session-state',
+  sessionActive: 'yes',
+});
+dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-session-state', sessionActive: false });
+dss.open();
+assert.deepStrictEqual(stSeen[2], [true, true], '非法 / 来源不符的会话状态消息被忽略');
+dss.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
 const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
 const usedClasses = new Set();
@@ -849,6 +881,31 @@ for (const cls of usedClasses) {
   await flush();
   assert.strictEqual(dfl.isOpen, false, '销毁后在途决定不再生效');
   assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+  // 按会话状态决策（demo 示例逻辑）：会话中取消隐藏，不在会话状态按默认直接隐藏
+  const dsg = createDrawer({ env: 'dev', token: 't-sg', agentCode: 'a-sg' });
+  dsg.onVisibilityChange((v, sessionActive) => {
+    if (v || !sessionActive) return; // 显示 / 不在会话状态：不返回值按默认
+    return Promise.resolve(true); // 会话中请求隐藏：取消隐藏（等价 demo 确认框选「取消」）
+  });
+  dsg.open();
+  dispatchWindowMessage(dsg.iframe.contentWindow, {
+    source: 'ckc-expert-agent',
+    type: 'drawer-session-state',
+    sessionActive: true,
+  });
+  dsg.close();
+  await flush();
+  assert.strictEqual(dsg.isOpen, true, '会话状态请求隐藏被取消：保持显示');
+  dispatchWindowMessage(dsg.iframe.contentWindow, {
+    source: 'ckc-expert-agent',
+    type: 'drawer-session-state',
+    sessionActive: false,
+  });
+  dsg.close();
+  await flush();
+  assert.strictEqual(dsg.isOpen, false, '不在会话状态：按默认直接隐藏');
+  dsg.destroy();
 
   console.log('smoke: all assertions passed');
 })().catch((err) => {

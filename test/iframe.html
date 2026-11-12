@@ -98,6 +98,7 @@
     <header>
       <h3>iframe 测试页（模拟 agent 页面）<span id="state" class="badge">抽屉状态：未知</span></h3>
       <div class="actions">
+        <button id="session-btn" type="button">会话状态：空闲</button>
         <button id="fs-btn" type="button">全屏</button>
         <button id="close-btn" type="button">关闭</button>
       </div>
@@ -215,6 +216,25 @@
             '*',
           );
           log('out', '消息（发给宿主）', msg);
+        });
+
+        // ---- 会话状态（固定协议 drawer-session-state）：上报当前 agent 是否处于正在会话状态 ----
+        // 初始化完成后上报当前状态，状态变化时再次上报；宿主组件缓存后随 onVisibilityChange 回调带出
+        // header 上的按钮用于模拟切换会话中 / 空闲，验证宿主按会话状态决策（如会话中才弹关闭确认框）
+        var sessionActive = false;
+        var sessionBtn = document.getElementById('session-btn');
+        function reportSessionState() {
+          parent.postMessage(
+            { source: 'ckc-expert-agent', type: 'drawer-session-state', sessionActive: sessionActive },
+            '*',
+          );
+          sessionBtn.textContent = sessionActive ? '会话状态：会话中' : '会话状态：空闲';
+          log('out', 'drawer-session-state（上报会话状态）', { sessionActive: sessionActive });
+        }
+        reportSessionState(); // 初始上报
+        sessionBtn.addEventListener('click', function () {
+          sessionActive = !sessionActive;
+          reportSessionState();
         });
 
         // ---- header 上的全屏按钮：固定协议 drawer-fullscreen，宿主组件据此调整抽屉宽度 ----
