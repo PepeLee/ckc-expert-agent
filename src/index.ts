@@ -6,7 +6,7 @@ export interface DrawerFile {
   name: string;
   /** 文件地址 */
   url: string;
-  /** 文件类型（如 image/png、application/pdf） */
+  /** 文件类型（具体的文件类型，如 pdf、png） */
   type: string;
 }
 
