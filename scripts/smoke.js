@@ -62,6 +62,7 @@ function makeEl(tag) {
       return false;
     },
     releasePointerCapture() {},
+    focus() {},
     getBoundingClientRect() {
       return { width: parseInt(this.style.width, 10) || 300 };
     },
@@ -929,6 +930,117 @@ for (const cls of usedClasses) {
   await flush();
   assert.strictEqual(dsg.isOpen, false, '不在会话状态：按默认直接隐藏');
   dsg.destroy();
+
+  // ===== 内置关闭确认弹窗（options.confirmOnClose） =====
+  // 开启后：会话中关闭弹组件内置确认弹窗（确定→隐藏 / 取消→保持显示），非会话直接关闭；
+  // 关闭方向由弹窗决定（回调返回值忽略），显示方向仍受回调返回值控制
+  const dcc = createDrawer({ env: 'dev', token: 't-cc', agentCode: 'a-cc', confirmOnClose: true });
+  const ccSeen = [];
+  dcc.onVisibilityChange((v) => {
+    ccSeen.push(v);
+    return true; // 关闭方向应被忽略（否则非会话直接关闭会被取消）
+  });
+  dcc.open();
+  assert.strictEqual(dcc.isOpen, true, '开启确认弹窗时显示方向正常（回调返回 true=显示）');
+  dcc.close(); // 非会话状态：直接关闭
+  assert.strictEqual(dcc.isOpen, false, '非会话状态：直接关闭（回调返回 true 被忽略）');
+  assert.strictEqual(body.children.length, 2, '非会话关闭不弹确认框（悬浮按钮 + 抽屉，抽屉隐藏但 DOM 保留）');
+  assert.deepStrictEqual(ccSeen, [true, false], '关闭方向忽略返回值但回调仍触发（仅感知）');
+  await flush();
+
+  // 会话中关闭：弹内置确认弹窗，未决定前保持显示
+  dispatchWindowMessage(dcc.iframe.contentWindow, {
+    source: 'ckc-expert-agent',
+    type: 'drawer-session-state',
+    sessionActive: true,
+  });
+  dcc.open();
+  dcc.close();
+  assert.strictEqual(dcc.isOpen, true, '确认弹窗在途：未决定前保持显示');
+  const dlg1 = body.children[body.children.length - 1];
+  assert.ok(dlg1.shadowRoot.innerHTML.includes('confirm-btn--ok'), '会话中关闭弹出内置确认弹窗');
+  assert.strictEqual(
+    dlg1.shadowRoot.querySelector('.confirm-message').textContent,
+    '当前有任务正在运行，关闭会取消任务，确认关闭吗？',
+    '弹窗默认文案',
+  );
+  assert.strictEqual(body.children.length, 3, '弹窗独立宿主挂在 body 上（悬浮按钮 + 抽屉 + 弹窗）');
+
+  // 点「取消」：保持显示，弹窗收起
+  dlg1.shadowRoot.querySelector('.confirm-btn--cancel').listeners.click[0]();
+  await flush();
+  assert.strictEqual(dcc.isOpen, true, '点「取消」保持显示');
+  assert.strictEqual(body.children.length, 2, '取消后弹窗收起');
+
+  // 点「确定」：隐藏生效
+  dcc.close();
+  const dlg2 = body.children[body.children.length - 1];
+  dlg2.shadowRoot.querySelector('.confirm-btn--ok').listeners.click[0]();
+  await flush();
+  assert.strictEqual(dcc.isOpen, false, '点「确定」隐藏生效');
+  assert.strictEqual(body.children.length, 2, '确定后弹窗收起');
+
+  // Esc=取消、Enter=确定
+  dcc.open();
+  dcc.close();
+  dispatchWindowEvent('keydown', { key: 'Escape', preventDefault() {} });
+  await flush();
+  assert.strictEqual(dcc.isOpen, true, 'Esc 取消：保持显示');
+  dcc.close();
+  dispatchWindowEvent('keydown', { key: 'Enter', preventDefault() {} });
+  await flush();
+  assert.strictEqual(dcc.isOpen, false, 'Enter 确定：隐藏生效');
+  assert.strictEqual(body.children.length, 2, '键盘操作后弹窗收起');
+
+  // 弹窗在途时反向请求接管：弹窗收起，结果显示
+  dcc.open();
+  dcc.close();
+  assert.strictEqual(body.children.length, 3, '再次关闭：弹窗在途');
+  dcc.open();
+  await flush();
+  assert.strictEqual(dcc.isOpen, true, '弹窗在途时显示请求接管：结果显示');
+  assert.strictEqual(body.children.length, 2, '接管时弹窗收起');
+
+  // destroy 收起在途弹窗并清场
+  dcc.close();
+  assert.strictEqual(body.children.length, 3, '销毁前弹窗在途');
+  dcc.destroy();
+  assert.strictEqual(body.children.length, 0, '销毁时收起弹窗并全部移除');
+  await flush();
+
+  // 显示方向仍受回调返回值控制（开启确认弹窗不影响显示方向）
+  const dco = createDrawer({ env: 'dev', token: 't-co', agentCode: 'a-co', confirmOnClose: true });
+  dco.onVisibilityChange(() => false);
+  dco.open();
+  assert.strictEqual(dco.isOpen, false, '开启确认弹窗时显示方向仍受回调返回值控制');
+  dco.destroy();
+  assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+  // 自定义弹窗文案（options.confirmOnCloseText）：不传时用默认文案（上方用例已覆盖）
+  const dct = createDrawer({
+    env: 'dev',
+    token: 't-ct',
+    agentCode: 'a-ct',
+    confirmOnClose: true,
+    confirmOnCloseText: '自定义关闭文案 <b>x</b>',
+  });
+  dct.open();
+  dispatchWindowMessage(dct.iframe.contentWindow, {
+    source: 'ckc-expert-agent',
+    type: 'drawer-session-state',
+    sessionActive: true,
+  });
+  dct.close();
+  const dlgText = body.children[body.children.length - 1];
+  assert.strictEqual(
+    dlgText.shadowRoot.querySelector('.confirm-message').textContent,
+    '自定义关闭文案 <b>x</b>',
+    '弹窗文案取自 options.confirmOnCloseText（原样文本，不解析 HTML）',
+  );
+  dlgText.shadowRoot.querySelector('.confirm-btn--cancel').listeners.click[0]();
+  await flush();
+  dct.destroy();
+  assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
   console.log('smoke: all assertions passed');
 })().catch((err) => {

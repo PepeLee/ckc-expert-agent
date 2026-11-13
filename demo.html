@@ -52,6 +52,8 @@
         maskClosable: true, // 点击遮盖层关闭抽屉（默认不关闭）
         closeSessionOnClose: true, // 关闭抽屉时关闭当前 agent 会话（默认不关闭）
         newSessionOnLauncherOpen: true, // 从悬浮按钮打开抽屉时重新开启新会话（默认不重新开启）
+        confirmOnClose: true, // 开启关闭确认弹窗：会话中关闭抽屉时弹组件内置确认框（默认不开启）
+        confirmOnCloseText: '当前正在会话中，确定要关闭吗1111？', // 确认弹窗文案（选填；不传时用默认文案）
         resizable: false, // 关闭拖拽调整抽屉宽度（默认开启）
         // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
       });
@@ -78,27 +80,26 @@
       });
 
       // 抽屉显隐变化（含抽屉内关闭按钮触发的隐藏）
-      // 不返回值：抽屉直接显示/隐藏（默认）；返回布尔值或 Promise<boolean>（true=显示 / false=隐藏）可自行控制本次显隐
+      // confirmOnClose: true：智能体正在会话中时关闭抽屉会弹出组件内置确认弹窗（确定→关闭 / 取消→保持显示），不在会话状态直接关闭；
+      // 此模式下关闭方向由内置确认弹窗决定（回调仅用于感知），显示方向不受影响；
+      // 若不开启 confirmOnClose，可在回调里返回布尔值或 Promise<boolean>（true=显示 / false=隐藏）自行控制本次显隐
       // 第二参 sessionActive：当前 iframe 的 agent 是否处于正在会话状态（true=正在会话中）
       drawer.onVisibilityChange(function (visible, sessionActive) {
         if (visible) {
           logMsg('抽屉显示');
-          return; // 请求显示：不返回值，按默认直接显示
-        }
-        if (!sessionActive) {
-          logMsg('抽屉隐藏');
-          return; // 不在会话状态：直接关闭，无需确认
+          return;
         }
         // 会话状态：关闭前弹确认框（onVisibilityChange 返回 Promise<boolean> 自行控制显隐）
-        return new Promise(function (resolve) {
-          if (window.confirm('当前正在会话中，确定要关闭抽屉吗？')) {
-            logMsg('确认关闭：抽屉隐藏');
-            resolve(false); // 最终显隐 = 隐藏
-          } else {
-            logMsg('取消关闭：抽屉保持显示');
-            resolve(true); // 最终显隐 = 显示（保持打开）
-          }
-        });
+        // return new Promise(function (resolve) {
+        //   if (window.confirm('当前正在会话中，确定要关闭抽屉吗？')) {
+        //     logMsg('确认关闭：抽屉隐藏');
+        //     resolve(false); // 最终显隐 = 隐藏
+        //   } else {
+        //     logMsg('取消关闭：抽屉保持显示');
+        //     resolve(true); // 最终显隐 = 显示（保持打开）
+        //   }
+        // });
+        logMsg(sessionActive ? '请求关闭（会话中：弹出内置确认弹窗）' : '请求关闭（非会话：直接关闭）');
       });
     </script>
   </body>

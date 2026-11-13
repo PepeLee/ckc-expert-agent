@@ -61,6 +61,13 @@ export interface DrawerOptions {
   /** 从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）；
    *  随配置消息（drawer-config）发给 iframe，由智能体页面结合打开方式（openSource）按此配置执行 */
   newSessionOnLauncherOpen?: boolean;
+  /** 是否开启关闭确认弹窗（默认不开启）：开启后，当前 agent 处于正在会话状态时关闭抽屉会弹出组件内置
+   *  确认弹窗（确定=关闭 / 取消=保持显示），不在会话状态直接关闭；此时关闭方向由内置弹窗决定
+   *  （onVisibilityChange 回调仍触发用于感知，但返回值不控制关闭），显示方向仍可由回调返回值控制；
+   *  不开启时仍可由 onVisibilityChange 返回布尔值 / Promise<boolean> 自行控制显隐 */
+  confirmOnClose?: boolean;
+  /** 关闭确认弹窗的提示文案（选填，配合 confirmOnClose: true 使用）；不传时默认「当前有任务正在运行，关闭会取消任务，确认关闭吗？」 */
+  confirmOnCloseText?: string;
   /** 是否生成悬浮图标入口（默认生成）；设为 false 时不生成悬浮按钮，抽屉只通过 DrawerHandle 的 open() / sendMessage() 等控制 */
   launcher?: boolean;
 }
@@ -171,6 +178,7 @@ export type DrawerSessionHandler = (sessionId: string) => void;
  * 默认不返回值：抽屉照常直接显示/隐藏；
  * 返回布尔值或 Promise<boolean> 可自行控制本次显隐（返回值即最终状态：true=显示 / false=隐藏），
  * 多个回调时按注册顺序以第一个明确的布尔值为准；抛错 / Promise 被拒绝按默认显隐处理。
+ * 开启 options.confirmOnClose 后关闭方向由组件内置确认弹窗决定（回调返回值不控制关闭），显示方向仍可控制。
  */
 export type DrawerVisibilityHandler = (
   visible: boolean,
@@ -184,7 +192,8 @@ export interface DrawerHandle {
   readonly isOpen: boolean;
   /** 显示抽屉（首次显示时初始化抽屉并加载 iframe；onVisibilityChange 回调可返回布尔值 / Promise<boolean> 自行控制是否显示） */
   open(): void;
-  /** 隐藏抽屉（移出视口但不销毁，iframe 继续运行，滚动条等状态保留） */
+  /** 隐藏抽屉（移出视口但不销毁，iframe 继续运行，滚动条等状态保留）；
+   *  开启 options.confirmOnClose 且当前处于会话状态时先弹内置确认弹窗，确认后才隐藏 */
   close(): void;
   /** 设置抽屉宽度（px，自动限制在 min/max 之间） */
   setWidth(width: number): void;
@@ -199,7 +208,8 @@ export interface DrawerHandle {
   /** 监听抽屉显示/隐藏变化（含 iframe 内发 drawer-close 触发的隐藏），返回取消监听函数；
    *  回调在显隐生效前触发（visible 为请求的显隐，第二参 sessionActive 为当前 iframe 的 agent
    *  是否处于正在会话状态），不返回值时按默认直接显示/隐藏，
-   *  返回布尔值或 Promise<boolean> 可自行控制最终显隐（true=显示 / false=隐藏） */
+   *  返回布尔值或 Promise<boolean> 可自行控制最终显隐（true=显示 / false=隐藏）；
+   *  开启 options.confirmOnClose 后关闭方向由组件内置确认弹窗决定（回调返回值不控制关闭） */
   onVisibilityChange(handler: DrawerVisibilityHandler): () => void;
   /** 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 */
   destroy(): void;
@@ -224,6 +234,20 @@ const LAUNCHER_MARGIN = 24;
 const DRAG_THRESHOLD = 5;
 /** 未收到 iframe 的 drawer-ready 就绪消息时，加载动画的最长显示时间（ms）；超时停止动画，避免一直转圈挡住 iframe 内容 */
 const LOADER_FALLBACK_MS = 10000;
+/** 关闭确认弹窗的默认提示文案（options.confirmOnCloseText 未传时使用） */
+const DEFAULT_CONFIRM_TEXT = '当前有任务正在运行，关闭会取消任务，确认关闭吗？';
+/** 关闭确认弹窗（options.confirmOnClose）的样式：全屏遮罩 + 居中卡片，浮在页面最上方 */
+const CONFIRM_STYLES = `
+  .confirm-overlay { position: fixed; inset: 0; z-index: ${Z_INDEX}; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  .confirm-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); }
+  .confirm-card { position: relative; box-sizing: border-box; background: #fff; border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); padding: 20px 24px; max-width: 360px; width: calc(100vw - 48px); }
+  .confirm-message { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 16px; }
+  .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
+  .confirm-btn { min-width: 64px; height: 32px; padding: 0 16px; border-radius: 4px; border: 1px solid #d9d9d9; background: #fff; color: #333; font-size: 13px; cursor: pointer; }
+  .confirm-btn--cancel:hover { border-color: #4096ff; color: #4096ff; }
+  .confirm-btn--ok { background: #1677ff; border-color: #1677ff; color: #fff; }
+  .confirm-btn--ok:hover { background: #4096ff; border-color: #4096ff; }
+`;
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
@@ -644,6 +668,64 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   let pendingVisibility: boolean | null = null;
   /** 显隐请求令牌：回调返回 Promise 时的异步决定只对最新一次请求生效 */
   let visibilityToken = 0;
+  /** 在途关闭确认弹窗的收起函数（options.confirmOnClose 开启且会话中关闭时弹出）：新的显隐请求 / destroy 时强制收起 */
+  let dismissConfirm: (() => void) | null = null;
+
+  /**
+   * 弹出组件内置的关闭确认弹窗，返回 Promise<boolean>（true=用户确认关闭，false=取消/保持显示）。
+   * 交互：点「确定」/ Enter = 确认关闭，点「取消」/ Esc / 点遮罩 = 取消；
+   * 同时只存在一个弹窗，被收起时按取消处理（显隐请求的令牌机制保证作废结果不生效）。
+   */
+  const askCloseConfirm = (): Promise<boolean> => {
+    dismissConfirm?.(); // 已有在途弹窗先收起（按取消），本次弹窗接管
+    return new Promise<boolean>((resolve) => {
+      const host = document.createElement('div');
+      const shadow = host.attachShadow({ mode: 'open' });
+      shadow.innerHTML = `
+        <style>${CONFIRM_STYLES}</style>
+        <div class="confirm-overlay">
+          <div class="confirm-backdrop"></div>
+          <div class="confirm-card" role="alertdialog" aria-modal="true" aria-label="关闭确认">
+            <div class="confirm-message"></div>
+            <div class="confirm-actions">
+              <button type="button" class="confirm-btn confirm-btn--cancel">取消</button>
+              <button type="button" class="confirm-btn confirm-btn--ok">确定</button>
+            </div>
+          </div>
+        </div>
+      `;
+      (shadow.querySelector('.confirm-message') as HTMLDivElement).textContent =
+        options.confirmOnCloseText || DEFAULT_CONFIRM_TEXT;
+      const okBtn = shadow.querySelector('.confirm-btn--ok') as HTMLButtonElement;
+      const cancelBtn = shadow.querySelector('.confirm-btn--cancel') as HTMLButtonElement;
+      const backdrop = shadow.querySelector('.confirm-backdrop') as HTMLDivElement;
+      let settled = false;
+      const finish = (confirmed: boolean): void => {
+        if (settled) return;
+        settled = true;
+        dismissConfirm = null;
+        window.removeEventListener('keydown', onKeyDown);
+        host.remove();
+        resolve(confirmed);
+      };
+      const onKeyDown = (e: KeyboardEvent): void => {
+        if (e.key === 'Escape') {
+          e.preventDefault();
+          finish(false);
+        } else if (e.key === 'Enter') {
+          e.preventDefault();
+          finish(true);
+        }
+      };
+      okBtn.addEventListener('click', () => finish(true));
+      cancelBtn.addEventListener('click', () => finish(false));
+      backdrop.addEventListener('click', () => finish(false));
+      window.addEventListener('keydown', onKeyDown);
+      dismissConfirm = () => finish(false);
+      document.body.appendChild(host);
+      okBtn.focus();
+    });
+  };
 
   /** 应用最终显隐（v=最终显隐）：只改 DOM / 状态并通知 iframe；onVisibilityChange 回调已在请求阶段触发过 */
   const applyVisibility = (v: boolean, src: DrawerOpenSource): void => {
@@ -671,6 +753,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * 回调可返回布尔值或 Promise<boolean> 自行控制本次显隐（返回值即最终状态：true=显示 / false=隐藏），
    * 不返回（或返回非布尔）则按默认直接显示/隐藏；多个回调按注册顺序以第一个明确的布尔值为准。
    * 回调返回 Promise 时显隐在其结算后生效，期间更新的显隐请求 / destroy 会取消本次生效。
+   * 开启 options.confirmOnClose 后关闭方向由内置确认弹窗决定（会话中弹窗确认，非会话直接关闭），
+   * 回调仍触发用于感知但返回值不控制关闭；显示方向不受影响。
    */
   const requestVisibility = (v: boolean, src: DrawerOpenSource): void => {
     if (destroyed) return;
@@ -678,7 +762,15 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (pendingVisibility === null && v === visible) return; // 已是目标状态，不触发回调
     const token = ++visibilityToken;
     pendingVisibility = v;
-    const results = fireVisibilityHandlers(v);
+    dismissConfirm?.(); // 新请求接管：收起在途的关闭确认弹窗（按取消处理，其结果作废）
+    let results: unknown[];
+    if (v === false && options.confirmOnClose === true) {
+      // 开启关闭确认弹窗：回调仅感知（返回值忽略）；会话中弹内置确认弹窗决定（确定=隐藏 / 取消=保持显示），非会话直接关闭
+      fireVisibilityHandlers(v);
+      results = sessionActive ? [askCloseConfirm().then((confirmed) => !confirmed)] : [];
+    } else {
+      results = fireVisibilityHandlers(v);
+    }
     const settle = async (): Promise<void> => {
       let decision: boolean | undefined;
       for (const r of results) {
@@ -970,6 +1062,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       if (destroyed) return;
       destroyed = true;
       activeDragEnd?.();
+      dismissConfirm?.(); // 收起在途的关闭确认弹窗（按取消处理）
       if (loaderFallbackTimer !== null) {
         clearTimeout(loaderFallbackTimer);
         loaderFallbackTimer = null;

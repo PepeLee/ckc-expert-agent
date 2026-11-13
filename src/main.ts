@@ -10,6 +10,8 @@ const drawer = createDrawer({
   agentCode: 'demo-agent',
   // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
   // resizable: false, // 选填：关闭拖拽调整抽屉宽度（默认开启）
+  // confirmOnClose: true, // 选填：开启关闭确认弹窗（会话中关闭抽屉时弹内置确认框；默认不开启）
+  // confirmOnCloseText: '当前有任务正在运行，关闭会取消任务，确认关闭吗？', // 选填：自定义确认弹窗文案
 });
 
 // 显隐通过返回的 DrawerHandle 控制

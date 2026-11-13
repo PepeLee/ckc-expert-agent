@@ -13,6 +13,7 @@
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
 - 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
 - 可选 `options.newSessionOnLauncherOpen`（默认 `false`）：控制**从悬浮按钮打开抽屉时是否重新开启新会话**；同样随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行
+- 可选 `options.confirmOnClose`（默认 `false`）：开启**关闭确认弹窗**（弹窗由组件内置实现，独立 Shadow DOM 宿主挂在 body 上，z-index 同抽屉）——当前 agent 处于**正在会话状态**时关闭抽屉会弹出内置确认弹窗（确定=关闭 / 取消=保持显示；`Esc`=取消、`Enter`=确定、点遮罩=取消），不在会话状态直接关闭；此模式下**关闭方向由内置弹窗决定**（`onVisibilityChange` 回调仍触发用于感知，但返回值不控制关闭），显示方向仍可由回调返回值控制；弹窗在途时新的显隐请求 / `destroy()` 会收起弹窗（按取消处理）；弹窗提示文案可用 `options.confirmOnCloseText` 自定义（不传用默认文案）；不开启时可继续用回调返回布尔值 / `Promise<boolean>` 自行控制显隐
 - 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
 - **显隐默认直接执行**（打开/关闭立即生效）；`onVisibilityChange` 回调也可**自行控制显隐**：回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为**当前 iframe 的 agent 是否处于正在会话状态**，由 iframe 发 `drawer-session-state` 上报、组件缓存），返回布尔值或 `Promise<boolean>` 接管本次显隐（**返回值即最终状态：`true`=显示 / `false`=隐藏**），不返回（或返回非布尔）则按默认直接显示/隐藏；回调返回 `Promise` 时显隐在结算后生效（期间新的显隐请求 / `destroy()` 会取消本次结果），多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / 拒绝按默认处理
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
@@ -74,6 +75,8 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     maskClosable: true, // 选填：点击遮盖层是否关闭抽屉（默认不关闭）
     closeSessionOnClose: true, // 选填：关闭抽屉时是否关闭当前 agent 会话（默认不关闭）
     newSessionOnLauncherOpen: true, // 选填：从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）
+    confirmOnClose: true, // 选填：开启关闭确认弹窗（会话中关闭时弹内置确认框；默认不开启）
+    confirmOnCloseText: '当前有任务正在运行，关闭会取消任务，确认关闭吗？', // 选填：确认弹窗文案（不传用默认文案）
     launcher: true, // 选填：是否生成悬浮图标入口（默认生成；false 时不生成，只用方法控制）
   });
 
@@ -146,6 +149,8 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.maskClosable` | `boolean` | `false` | 开启遮盖层（`mask: true`）后，点击遮盖层是否关闭抽屉 |
 | `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否关闭当前 agent 会话；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
 | `options.newSessionOnLauncherOpen` | `boolean` | `false` | 从悬浮按钮打开抽屉时是否重新开启新会话；随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行 |
+| `options.confirmOnClose` | `boolean` | `false` | 是否开启**关闭确认弹窗**（组件内置）：开启后当前处于正在会话状态时关闭抽屉弹出内置确认弹窗（确定=关闭 / 取消=保持显示，`Esc`/遮罩=取消、`Enter`=确定），不在会话状态直接关闭；此时关闭方向由弹窗决定（`onVisibilityChange` 回调仍触发但返回值不控制关闭），显示方向仍可由回调返回值控制 |
+| `options.confirmOnCloseText` | `string` | `'当前有任务正在运行，关闭会取消任务，确认关闭吗？'` | 关闭确认弹窗的提示文案（配合 `options.confirmOnClose` 使用；不传用默认文案；按纯文本渲染，不含 HTML 解析） |
 | `options.launcher` | `boolean` | `true` | 是否生成悬浮图标入口（悬浮按钮）；`false` 时不生成悬浮按钮，抽屉只通过 `open()` / `sendMessage()` 等方法控制 |
 
 环境与站点域名映射（域名固化在组件内）：
@@ -164,12 +169,12 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `iframe` | 抽屉内的 `HTMLIFrameElement`，首次打开抽屉前为 `null` |
 | `isOpen` | 当前抽屉是否处于打开状态（未初始化、已关闭、已销毁时为 `false`） |
 | `open()` | 显示抽屉（首次调用时初始化抽屉并加载 iframe） |
-| `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留） |
+| `close()` | 隐藏抽屉（移出视口，不销毁；iframe 继续运行，滚动位置等状态保留）；开启 `options.confirmOnClose` 且会话中时先弹内置确认弹窗，确认后才隐藏 |
 | `setWidth(width)` | 设置抽屉宽度（px，自动限制在 min/max 之间） |
 | `sendMessage(payload)` | 向 iframe 发消息（固定协议 `drawer-message`，payload 为 `{message, files, sessionId?, directSend?}`——后两个可选：`sessionId` 用于唤起已有的 agent 会话、`directSend` 表示是否直接发送，均随消息原样传到 iframe）；**调用时自动打开抽屉**（未初始化则初始化 iframe）；iframe 就绪（`drawer-ready`）前自动排队，就绪后补发；发送失败也排队，重新就绪后补发 |
 | `receiveMessage(handler)` | 接收消息：iframe 发来业务消息（`drawer-message`，payload 为 `{message, files, sessionId?, ...其它附带字段}`）时回调，返回取消监听函数 |
 | `receiveSessionId(handler)` | 接收 sessionId：宿主未传 `options.sessionId` 时 iframe 生成并发出（`drawer-session`），宿主在此接收处理，返回取消监听函数 |
-| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数；回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为当前 iframe 的 agent 是否处于正在会话状态，由 iframe 发 `drawer-session-state` 上报），不返回值按默认直接显示/隐藏，**返回布尔值或 `Promise<boolean>` 自行控制最终显隐（`true`=显示 / `false`=隐藏）**；多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / Promise 拒绝按默认处理，`destroy()` 不受控制 |
+| `onVisibilityChange(handler)` | 监听抽屉显示/隐藏变化（含 iframe 内发 `drawer-close` 触发的隐藏），返回取消监听函数；回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为当前 iframe 的 agent 是否处于正在会话状态，由 iframe 发 `drawer-session-state` 上报），不返回值按默认直接显示/隐藏，**返回布尔值或 `Promise<boolean>` 自行控制最终显隐（`true`=显示 / `false`=隐藏）**；多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / Promise 拒绝按默认处理，`destroy()` 不受控制；开启 `options.confirmOnClose` 后关闭方向由组件内置确认弹窗决定（回调返回值不控制关闭，显示方向仍可控制） |
 | `destroy()` | 彻底销毁：移除悬浮按钮和抽屉 DOM 并解绑事件 |
 
 ## 消息协议（固定）
