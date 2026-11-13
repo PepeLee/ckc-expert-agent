@@ -24,11 +24,13 @@
 ```bash
 npm install
 npm run dev     # 本地开发预览
-npm run build   # 构建 UMD 产物到 dist/
+npm run build   # 构建产物到 dist/（UMD + ESM + TypeScript 类型声明）
 npm test        # 构建并运行零依赖冒烟测试（scripts/smoke.js）
 ```
 
-构建产物：`dist/ckc-expert-agent.umd.js`（附 sourcemap），部署时上传到各环境站点的 `/center/exts/` 目录（固定脚本地址见「接入方式」）。
+构建产物：`dist/ckc-expert-agent.umd.js`（附 sourcemap，部署时上传到各环境站点的 `/center/exts/` 目录，固定脚本地址见「接入方式」）、`dist/ckc-expert-agent.es.mjs`（npm / 打包器的 ESM 入口）、`dist/index.d.ts`（TypeScript 类型声明，由 `tsc` 从源码生成）。
+
+发布为 npm 包直接 `npm publish`（`files` 已限定只带 `dist`；发布前按需补全 `package.json` 的 `license` / `repository` / `publishConfig`，发私服时在 `.npmrc` 配置 `registry`）。
 
 ## 本地联调
 
@@ -119,6 +121,29 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 ```
 
 也支持通过 UMD 全局对象访问：`window.CkcExpertAgent.createDrawer()`（与 `window.createCkcDrawer` 是同一个方法）。
+
+### npm 安装（打包器 / TypeScript 项目）
+
+除 `<script>` 标签外也支持以 npm 包安装（自带 TypeScript 类型声明）：
+
+```bash
+npm install ckc-expert-agent
+```
+
+```ts
+import { createDrawer, type DrawerOptions, type DrawerHandle } from 'ckc-expert-agent';
+
+const drawer: DrawerHandle = createDrawer({
+  env: 'dev', // 运行环境：dev / sit / pro
+  token: 'xxxx',
+  agentCode: 'agent-01',
+});
+drawer.open();
+```
+
+- 打包器按 `exports` 优先加载 ESM 产物（`ckc-expert-agent.es.mjs`），`require`（CJS）走 UMD 产物；类型声明随包分发，`DrawerOptions` / `DrawerHandle` / `DrawerFile` 等类型均可直接 import
+- npm 引入后 `window.createCkcDrawer` 同样挂载；UMD 全局（`CkcExpertAgent`）的类型也随声明提供（`export as namespace`），script 标签 + TS 的接入方复制 `dist/index.d.ts` 即可获得类型
+- 与 `<script>` 标签方式二选一，行为完全一致
 
 ## window 全局方法
 

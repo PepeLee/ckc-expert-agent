@@ -929,6 +929,24 @@ for (const cls of usedClasses) {
   assert.ok(srcText.includes('.' + cls), `样式缺少 .${cls} 选择器，classList 操作会静默失效`);
 }
 
+// ===== npm 包产物：入口字段指向的文件真实存在，TypeScript 类型声明导出完整 =====
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
+assert.strictEqual(pkg.private, undefined, 'package.json 不应标记 private（会导致无法 npm 发布）');
+for (const field of ['main', 'module', 'types']) {
+  assert.ok(typeof pkg[field] === 'string', `package.json 缺少 ${field} 字段`);
+  assert.ok(
+    fs.existsSync(path.join(__dirname, '..', pkg[field])),
+    `package.json 的 ${field} 指向的文件不存在：${pkg[field]}（需先 npm run build）`,
+  );
+}
+const dtsText = fs.readFileSync(path.join(__dirname, '..', pkg.types), 'utf8');
+for (const sym of ['createDrawer', 'DrawerOptions', 'DrawerHandle', 'DrawerFile']) {
+  assert.ok(dtsText.includes(sym), `类型声明 ${pkg.types} 缺少导出 ${sym}`);
+}
+assert.ok(dtsText.includes('export as namespace'), '类型声明缺少 UMD 全局声明（export as namespace）');
+const esText = fs.readFileSync(path.join(__dirname, '..', pkg.module), 'utf8');
+assert.ok(/\bcreateDrawer\b/.test(esText), `ESM 产物 ${pkg.module} 缺少 createDrawer 导出`);
+
 // ===== onVisibilityChange 回调自行控制显隐：返回布尔值或 Promise<boolean>（true=显示 / false=隐藏） =====
 (async () => {
   // 等回调返回的 Promise 结算（组件在结算后才应用显隐）

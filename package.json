@@ -1,12 +1,24 @@
 {
   "name": "ckc-expert-agent",
   "version": "0.1.0",
-  "private": true,
-  "description": "可嵌入第三方页面的右侧抽屉组件（UMD，可直接放 CDN 使用）",
+  "description": "可嵌入第三方页面的右侧抽屉组件（支持 npm 安装 / CDN script 标签引入，自带 TypeScript 类型）",
   "main": "./dist/ckc-expert-agent.umd.js",
+  "module": "./dist/ckc-expert-agent.es.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/ckc-expert-agent.es.mjs",
+      "require": "./dist/ckc-expert-agent.umd.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && tsc -p tsconfig.build.json && node scripts/build-types.js",
     "preview": "vite preview",
     "test": "npm run build && node scripts/smoke.js",
     "test:server": "node scripts/test-server.js"
