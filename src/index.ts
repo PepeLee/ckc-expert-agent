@@ -49,6 +49,8 @@ export interface DrawerOptions {
   minWidth?: number;
   /** 最大宽度（px），默认视口宽度 */
   maxWidth?: number;
+  /** 是否开启拖拽调整抽屉宽度（默认开启）；设为 false 时关闭拖拽调宽（不渲染拖拽把手） */
+  resizable?: boolean;
   /** 抽屉打开时是否给左侧页面区域加遮盖层（默认不开启） */
   mask?: boolean;
   /** 开启遮盖层（mask: true）后，点击遮盖层是否关闭抽屉（默认不关闭） */
@@ -711,7 +713,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     shadow.innerHTML = `
       <style>${DRAWER_STYLES}</style>
       <div class="panel">
-        <div class="resize-handle"></div>
+        ${options.resizable !== false ? '<div class="resize-handle"></div>' : ''}
         <div class="loader">
           <div class="loader-spinner"></div>
           <div class="loader-text">加载中…</div>
@@ -733,13 +735,14 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     // iframe 加载成功与否不以 load 事件判断（about:blank/浏览器错误页也会触发 load）：
     // 由 iframe 页面初始化完成后发 drawer-ready 就绪消息，宿主收到后在 onFrameReady 里统一补发。
 
-    // 拖动左边框调整宽度：向左拖变宽，向右拖变窄。
+    // 拖动左边框调整宽度（options.resizable，默认开启）：向左拖变宽，向右拖变窄。
+    // 设为 false 关闭拖拽调宽：不渲染拖拽把手（见模板），这里也不挂拖拽监听（resizeHandle 为 null）。
     // 弱网/云桌面下拖拽事件可能丢失，做多层兜底避免拖拽卡死或异常：
     // 1) 拖拽期间 iframe 置为 pointer-events: none，move/up 不会被跨文档 iframe 吞掉；
     // 2) move/up 监听挂在 window 上（配合指针捕获），指针移出把手仍能继续；
     // 3) pointerup 丢失时按 buttons===0 自检收尾，窗口失焦、页面隐藏也强制收尾；
     // 4) 新拖拽开始/销毁时若上次未收尾，先强制结束。
-    resizeHandle.addEventListener('pointerdown', (e: PointerEvent) => {
+    resizeHandle?.addEventListener('pointerdown', (e: PointerEvent) => {
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       activeDragEnd?.();

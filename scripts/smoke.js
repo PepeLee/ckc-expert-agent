@@ -771,6 +771,29 @@ assert.deepStrictEqual(stSeen[2], [true, true], '非法 / 来源不符的会话�
 dss.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
+// 拖拽调宽开关（options.resizable）：默认开启（渲染拖拽把手，拖拽调宽的行为主流程已覆盖）；
+// resizable: false 关闭——不渲染拖拽把手、拖不动；setWidth 等方法不受开关影响
+// （DOM stub 的 querySelector 对任意选择器都返回桩元素，这里用 innerHTML 断言元素是否渲染，与 close-btn 用例一致）
+const drs = createDrawer({ env: 'dev', token: 't-rs', agentCode: 'a-rs' });
+drs.open();
+const drsHost = body.children[1];
+assert.ok(
+  drsHost.shadowRoot.innerHTML.includes('<div class="resize-handle">'),
+  '默认开启拖拽调宽：渲染拖拽把手',
+);
+drs.destroy();
+const drsOff = createDrawer({ env: 'dev', token: 't-ro', agentCode: 'a-ro', resizable: false });
+drsOff.open();
+const drsOffHost = body.children[1];
+assert.ok(
+  !drsOffHost.shadowRoot.innerHTML.includes('<div class="resize-handle">'),
+  'resizable: false 关闭拖拽调宽：不渲染拖拽把手',
+);
+drsOff.setWidth(600);
+assert.strictEqual(drsOffHost.style.width, '600px', '关闭拖拽调宽时 setWidth 仍可用');
+drsOff.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
 const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
 const usedClasses = new Set();
