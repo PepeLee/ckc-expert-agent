@@ -186,6 +186,15 @@
             log('out', '消息（回执给宿主）', reply);
           } else if (d.type === 'drawer-config') {
             log('in', 'drawer-config（组件配置）', d.payload);
+          } else if (d.type === 'drawer-width-state') {
+            // 拖拽调宽结束时组件同步的宽度状态（atMax / atMin = 当前宽度是否为最大 / 最小值）：
+            // 据此控制「全屏 / 取消全屏」按钮状态（宽度为最大值 → 按钮显示「取消全屏」）
+            fullscreen = d.atMax === true;
+            fsBtn.textContent = fullscreen ? '取消全屏' : '全屏';
+            log('in', 'drawer-width-state（宽度状态，同步全屏按钮）', {
+              atMax: d.atMax,
+              atMin: d.atMin,
+            });
           } else if (d.type === 'drawer-visibility-change') {
             log('in', '抽屉显隐', { visible: d.visible, openSource: d.openSource });
             stateEl.textContent = d.visible

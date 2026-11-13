@@ -815,6 +815,67 @@ assert.strictEqual(dfsHost.style.width, '500px', '取消全屏 = 设为最小宽
 dfs.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
+// 拖拽调宽结束时同步宽度状态（drawer-width-state）：atMax / atMin 告知 iframe 当前宽度是否为
+// 最大值 / 最小值，供 iframe 控制「全屏 / 取消全屏」按钮状态；iframe 重新就绪时也补发当前状态
+const dws = createDrawer({ env: 'dev', token: 't-ws', agentCode: 'a-ws', width: 600, minWidth: 500, maxWidth: 1000 });
+dws.open();
+const dwsHost = body.children[1];
+const dwsHandle = dwsHost.shadowRoot.querySelector('.resize-handle');
+let wsSeen = frameMsgs.length;
+const wsStates = () =>
+  frameMsgs
+    .slice(wsSeen)
+    .filter((m) => m.msg.type === 'drawer-width-state')
+    .map((m) => ({ atMax: m.msg.atMax, atMin: m.msg.atMin }));
+
+// iframe 就绪补发当前状态：初始 600px（非极值）→ atMax / atMin 均为 false
+dispatchWindowMessage(dws.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.deepStrictEqual(wsStates(), [{ atMax: false, atMin: false }], 'iframe 就绪补发宽度状态（非极值）');
+
+// 拖到最大宽度以外：被夹到 maxWidth → atMax: true
+wsSeen = frameMsgs.length;
+dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(100, 400));
+dispatchWindowEvent('pointerup', pointerEvent(100, 400));
+assert.strictEqual(dwsHost.style.width, '1000px');
+assert.deepStrictEqual(wsStates(), [{ atMax: true, atMin: false }], '拖拽结束在最大宽度：atMax: true');
+
+// 拖到最小宽度以外：被夹到 minWidth → atMin: true
+wsSeen = frameMsgs.length;
+dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(1600, 400));
+dispatchWindowEvent('pointerup', pointerEvent(1600, 400));
+assert.strictEqual(dwsHost.style.width, '500px');
+assert.deepStrictEqual(wsStates(), [{ atMax: false, atMin: true }], '拖拽结束在最小宽度：atMin: true');
+
+// 拖到中间宽度：atMax / atMin 均为 false
+wsSeen = frameMsgs.length;
+dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(800, 400));
+dispatchWindowEvent('pointerup', pointerEvent(800, 400));
+assert.strictEqual(dwsHost.style.width, '700px');
+assert.deepStrictEqual(wsStates(), [{ atMax: false, atMin: false }], '拖拽结束在中间宽度：均为 false');
+
+// 兜底收尾（pointerup 丢失时 buttons=0 自检）同样同步宽度状态
+wsSeen = frameMsgs.length;
+dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(400, 400));
+dispatchWindowEvent('pointermove', pointerEvent(380, 400, 0));
+assert.deepStrictEqual(wsStates(), [{ atMax: true, atMin: false }], '事件丢失兜底收尾也同步宽度状态');
+
+// iframe 刷新重新就绪：补发当前宽度状态（拖拽调宽后的状态不丢）
+wsSeen = frameMsgs.length;
+dispatchWindowMessage(dws.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.deepStrictEqual(wsStates(), [{ atMax: true, atMin: false }], 'iframe 重新就绪补发当前宽度状态');
+
+// 拖拽中销毁：不发宽度状态（实例已销毁）
+wsSeen = frameMsgs.length;
+dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
+dispatchWindowEvent('pointermove', pointerEvent(900, 400));
+dws.destroy();
+assert.deepStrictEqual(wsStates(), [], '拖拽中销毁不发宽度状态');
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
 const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
 const usedClasses = new Set();

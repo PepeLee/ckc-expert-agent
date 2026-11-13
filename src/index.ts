@@ -102,6 +102,21 @@ export interface DrawerConfigMessage {
 }
 
 /**
+ * 宿主发给 iframe 的宽度状态消息（type: drawer-width-state）：
+ * 拖拽调整抽屉宽度结束时发出（iframe 刷新/重新初始化后重新就绪时补发当前状态），
+ * 告知当前抽屉宽度是否处于最大值 / 最小值，供 iframe 页面控制「全屏 / 取消全屏」按钮状态
+ * （如：宽度为最大值时按钮显示「取消全屏」，否则显示「全屏」）。
+ */
+export interface DrawerWidthStateMessage {
+  source: 'ckc-expert-agent';
+  type: 'drawer-width-state';
+  /** 当前抽屉宽度是否为最大值（options.maxWidth） */
+  atMax: boolean;
+  /** 当前抽屉宽度是否为最小值（options.minWidth） */
+  atMin: boolean;
+}
+
+/**
  * 业务消息（固定协议 drawer-message，双向）：
  * 宿主经 drawer.sendMessage() 发给 iframe（payload 为 DrawerPayload：{message, files, sessionId?, directSend?}）；
  * iframe 也可发给宿主（payload 为 DrawerMessagePayload：{message, files, sessionId?, ...其它附带字段}），由 drawer.receiveMessage() 接收。
@@ -512,8 +527,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     if (drawerHost) drawerHost.style.width = `${width}px`;
   };
 
-  // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-config / drawer-message（双向） /
-  // drawer-ready / drawer-session / drawer-session-state / drawer-fullscreen / drawer-close 八种，
+  // 宿主 ↔ iframe 消息固定为 drawer-visibility-change / drawer-config / drawer-width-state /
+  // drawer-message（双向）/ drawer-ready / drawer-session / drawer-session-state / drawer-fullscreen / drawer-close 九种，
   // 宿主统一用 sendMessage / receiveMessage / receiveSessionId / onVisibilityChange 收发，不直接使用 postMessage / message 事件。
   // 这里只接受本抽屉 iframe 发来的合规消息，其余一律丢弃。
   const onWindowMessage = (e: MessageEvent): void => {
@@ -570,7 +585,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
    * 这里统一捕获，消息保留待 iframe 重新就绪（再发 drawer-ready）后补发，绝不把异常抛给宿主。
    */
   const postToFrame = (
-    msg: DrawerVisibilityMessage | DrawerConfigMessage | DrawerMessage,
+    msg: DrawerVisibilityMessage | DrawerConfigMessage | DrawerWidthStateMessage | DrawerMessage,
   ): boolean => {
     const target = frame?.contentWindow;
     if (!target) return false;
@@ -601,7 +616,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
-    // 先发配置（关闭抽屉是否关会话 / 悬浮按钮打开是否新开会话），再发当前显隐，最后补发排队消息
+    // 先发配置（关闭抽屉是否关会话 / 悬浮按钮打开是否新开会话），再发当前显隐和宽度状态，最后补发排队消息
     postToFrame({
       source: 'ckc-expert-agent',
       type: 'drawer-config',
@@ -611,6 +626,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       },
     });
     postToFrame(visibilityMessage(visible));
+    postToFrame(widthStateMessage()); // 当前宽度状态（iframe 刷新重新就绪后全屏按钮状态才同步得上）
     while (pendingMessages.length > 0) {
       if (!postToFrame(pendingMessages[0])) break;
       pendingMessages.shift();
@@ -626,6 +642,19 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     };
     if (v) msg.openSource = openSource;
     return msg;
+  };
+
+  /** 构造宽度状态消息：当前抽屉宽度是否处于最大值 / 最小值（供 iframe 控制「全屏 / 取消全屏」按钮状态） */
+  const widthStateMessage = (): DrawerWidthStateMessage => ({
+    source: 'ckc-expert-agent',
+    type: 'drawer-width-state',
+    atMax: width === maxWidth,
+    atMin: width === minWidth,
+  });
+
+  /** 同步宽度状态给 iframe（拖拽调宽结束时调用）；iframe 未就绪不发，由 onFrameReady 补发 */
+  const notifyWidthState = (): void => {
+    if (frameReady) postToFrame(widthStateMessage());
   };
 
   /** 触发 onVisibilityChange 回调（返回值供显隐控制用）；单个回调抛错 / 拒绝不影响其它回调与后续流程 */
@@ -874,6 +903,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
         window.removeEventListener('blur', endDrag);
         document.removeEventListener('visibilitychange', onVisibilityChange);
         if (activeDragEnd === endDrag) activeDragEnd = null;
+        // 拖拽调宽结束：把当前宽度是否为最大值 / 最小值同步给 iframe，供其控制「全屏 / 取消全屏」按钮状态
+        if (!destroyed) notifyWidthState();
       }
       function onVisibilityChange(): void {
         if (document.visibilityState === 'hidden') endDrag();
