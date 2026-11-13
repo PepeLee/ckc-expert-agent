@@ -70,6 +70,9 @@ export interface DrawerOptions {
   confirmOnCloseText?: string;
   /** 是否生成悬浮图标入口（默认生成）；设为 false 时不生成悬浮按钮，抽屉只通过 DrawerHandle 的 open() / sendMessage() 等控制 */
   launcher?: boolean;
+  /** 组件整体层级（z-index，默认 2147483647 浮在页面所有内容之上）：抽屉 / 内置确认弹窗为该值，悬浮按钮 / 遮盖层为该值 - 1；
+   *  接入方自定义弹窗（如自建关闭确认框）需要盖过抽屉时，把该值调低到自家弹窗层级之下（如 1000） */
+  zIndex?: number;
 }
 
 /** 抽屉打开方式：launcher=点击悬浮图标打开，handle=调用 DrawerHandle.open()（含 sendMessage 自动打开） */
@@ -239,10 +242,8 @@ const ENV_DOMAINS: Record<DrawerEnv, string> = {
   local: 'http://localhost:4173',
 };
 const DEFAULT_MIN_WIDTH = 500;
-/** 32 位有符号整数最大值，保证抽屉浮在接入方页面所有内容之上 */
+/** 默认组件层级（32 位有符号整数最大值），保证抽屉浮在接入方页面所有内容之上；可用 options.zIndex 调整 */
 const Z_INDEX = 2147483647;
-/** 悬浮按钮略低于抽屉，抽屉打开时盖在按钮上方 */
-const LAUNCHER_Z_INDEX = 2147483646;
 const LAUNCHER_SIZE = 48;
 const LAUNCHER_MARGIN = 24;
 /** 位移超过该阈值（px）视为拖动，否则视为点击 */
@@ -253,7 +254,7 @@ const LOADER_FALLBACK_MS = 10000;
 const DEFAULT_CONFIRM_TEXT = '当前有任务正在运行，关闭会取消任务，确认关闭吗？';
 /** 关闭确认弹窗（options.confirmOnClose）的样式：全屏遮罩 + 居中卡片，浮在页面最上方 */
 const CONFIRM_STYLES = `
-  .confirm-overlay { position: fixed; inset: 0; z-index: ${Z_INDEX}; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
+  .confirm-overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif; }
   .confirm-backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); }
   .confirm-card { position: relative; box-sizing: border-box; background: #fff; border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); padding: 20px 24px; max-width: 360px; width: calc(100vw - 48px); }
   .confirm-message { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 16px; }
@@ -292,7 +293,6 @@ const LAUNCHER_STYLES = `
     position: fixed;
     left: 0;
     top: 0;
-    z-index: ${LAUNCHER_Z_INDEX};
     display: block;
     width: ${LAUNCHER_SIZE}px;
     height: ${LAUNCHER_SIZE}px;
@@ -328,7 +328,6 @@ const MASK_STYLES = `
     all: initial;
     position: fixed;
     inset: 0;
-    z-index: ${Z_INDEX - 1};
     display: block;
   }
   :host(.ckc-mask--hidden) {
@@ -349,7 +348,6 @@ const DRAWER_STYLES = `
     right: 0;
     height: 100vh;
     height: 100dvh;
-    z-index: ${Z_INDEX};
     display: block;
     width: ${DEFAULT_WIDTH}px;
     box-sizing: border-box;
@@ -460,6 +458,14 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       '[ckc-expert-agent] createDrawer: 必须通过 options.agentCode 传入智能体编码',
     );
   }
+  if (
+    options.zIndex !== undefined &&
+    (typeof options.zIndex !== 'number' || !Number.isFinite(options.zIndex))
+  ) {
+    throw new TypeError('[ckc-expert-agent] createDrawer: options.zIndex 必须是有限数字');
+  }
+  /** 组件整体层级：抽屉 / 内置确认弹窗 = zIndex，悬浮按钮 / 遮盖层 = zIndex - 1；小数取整，范围收拢到 [0, 2147483647] */
+  const zIndex = clamp(Math.trunc(options.zIndex ?? Z_INDEX), 0, Z_INDEX);
 
   const minWidth = Math.max(0, options.minWidth ?? DEFAULT_MIN_WIDTH);
   const maxWidth = Math.max(
@@ -488,6 +494,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   };
   if (options.launcher !== false) {
     launcherHost = document.createElement('div');
+    launcherHost.style.zIndex = String(zIndex - 1); // 略低于抽屉，抽屉打开时盖在按钮上方
     const launcherShadow = launcherHost.attachShadow({ mode: 'open' });
     launcherShadow.innerHTML = `
     <style>${LAUNCHER_STYLES}</style>
@@ -723,6 +730,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       `;
       (shadow.querySelector('.confirm-message') as HTMLDivElement).textContent =
         options.confirmOnCloseText || DEFAULT_CONFIRM_TEXT;
+      // 与抽屉同层（options.zIndex）；弹窗宿主后挂 DOM，天然盖在抽屉上方
+      (shadow.querySelector('.confirm-overlay') as HTMLDivElement).style.zIndex = String(zIndex);
       const okBtn = shadow.querySelector('.confirm-btn--ok') as HTMLButtonElement;
       const cancelBtn = shadow.querySelector('.confirm-btn--cancel') as HTMLButtonElement;
       const backdrop = shadow.querySelector('.confirm-backdrop') as HTMLDivElement;
@@ -922,6 +931,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     // 点击遮盖层是否关闭抽屉由 options.maskClosable 控制（默认不关闭）
     if (options.mask === true && !maskHost) {
       const mHost = document.createElement('div');
+      mHost.style.zIndex = String(zIndex - 1); // 与悬浮按钮同层，略低于抽屉
       const mShadow = mHost.attachShadow({ mode: 'open' });
       mShadow.innerHTML = `
         <style>${MASK_STYLES}</style>
@@ -936,6 +946,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     }
 
     host.style.width = `${width}px`;
+    host.style.zIndex = String(zIndex); // 抽屉浮在页面内容上方（默认 2147483647，可用 options.zIndex 调整）
     (document.body ?? document.documentElement).appendChild(host);
 
     // 加载动画兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息、加载被拦截或网络异常）时，

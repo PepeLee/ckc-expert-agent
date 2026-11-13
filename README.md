@@ -16,7 +16,7 @@
 - 可选 `options.confirmOnClose`（默认 `false`）：开启**关闭确认弹窗**（弹窗由组件内置实现，独立 Shadow DOM 宿主挂在 body 上，z-index 同抽屉）——当前 agent 处于**正在会话状态**时关闭抽屉会弹出内置确认弹窗（确定=关闭 / 取消=保持显示；`Esc`=取消、`Enter`=确定、点遮罩=取消），不在会话状态直接关闭；此模式下**关闭方向由内置弹窗决定**（`onVisibilityChange` 回调仍触发用于感知，但返回值不控制关闭），显示方向仍可由回调返回值控制；弹窗在途时新的显隐请求 / `destroy()` 会收起弹窗（按取消处理）；弹窗提示文案可用 `options.confirmOnCloseText` 自定义（不传用默认文案）；不开启时可继续用回调返回布尔值 / `Promise<boolean>` 自行控制显隐
 - 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
 - **显隐默认直接执行**（打开/关闭立即生效）；`onVisibilityChange` 回调也可**自行控制显隐**：回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为**当前 iframe 的 agent 是否处于正在会话状态**，由 iframe 发 `drawer-session-state` 上报、组件缓存），返回布尔值或 `Promise<boolean>` 接管本次显隐（**返回值即最终状态：`true`=显示 / `false`=隐藏**），不返回（或返回非布尔）则按默认直接显示/隐藏；回调返回 `Promise` 时显隐在结算后生效（期间新的显隐请求 / `destroy()` 会取消本次结果），多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / 拒绝按默认处理
-- 抽屉浮在接入方页面最上方（`z-index: 2147483647`）
+- 抽屉浮在接入方页面最上方（`z-index: 2147483647`，可用 `options.zIndex` 调整组件整体层级——接入方自定义弹窗需盖过抽屉时调低）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
 ## 开发与构建
@@ -78,6 +78,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     confirmOnClose: true, // 选填：开启关闭确认弹窗（会话中关闭时弹内置确认框；默认不开启）
     confirmOnCloseText: '当前有任务正在运行，关闭会取消任务，确认关闭吗？', // 选填：确认弹窗文案（不传用默认文案）
     launcher: true, // 选填：是否生成悬浮图标入口（默认生成；false 时不生成，只用方法控制）
+    zIndex: 2147483647, // 选填：组件层级（默认 2147483647；接入方自定义弹窗需盖过抽屉时调低，如 1000）
   });
 
   // 显隐通过返回的 DrawerHandle 控制
@@ -152,6 +153,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.confirmOnClose` | `boolean` | `false` | 是否开启**关闭确认弹窗**（组件内置）：开启后当前处于正在会话状态时关闭抽屉弹出内置确认弹窗（确定=关闭 / 取消=保持显示，`Esc`/遮罩=取消、`Enter`=确定），不在会话状态直接关闭；此时关闭方向由弹窗决定（`onVisibilityChange` 回调仍触发但返回值不控制关闭），显示方向仍可由回调返回值控制 |
 | `options.confirmOnCloseText` | `string` | `'当前有任务正在运行，关闭会取消任务，确认关闭吗？'` | 关闭确认弹窗的提示文案（配合 `options.confirmOnClose` 使用；不传用默认文案；按纯文本渲染，不含 HTML 解析） |
 | `options.launcher` | `boolean` | `true` | 是否生成悬浮图标入口（悬浮按钮）；`false` 时不生成悬浮按钮，抽屉只通过 `open()` / `sendMessage()` 等方法控制 |
+| `options.zIndex` | `number` | `2147483647` | 组件整体层级：抽屉 / 内置确认弹窗为该值，悬浮按钮 / 遮盖层为 `zIndex - 1`（相对次序整体平移）；接入方自定义弹窗需盖过抽屉时调低（如 `1000`）；非有限数字抛错，小数取整，超出 `[0, 2147483647]` 自动收拢 |
 
 环境与站点域名映射（域名固化在组件内）：
 

@@ -243,6 +243,9 @@ assert.strictEqual(drawerHost.classList.contains('ckc-drawer--hidden'), false);
 assert.strictEqual(drawerHost.inert, false);
 // 默认宽度 500px
 assert.strictEqual(drawerHost.style.width, '500px');
+// 默认层级：抽屉 2147483647（浮在页面所有内容之上），悬浮按钮 2147483646（略低于抽屉）
+assert.strictEqual(drawerHost.style.zIndex, '2147483647');
+assert.strictEqual(launcherHost.style.zIndex, '2147483646');
 // 最终 iframe 地址：{域名}/center/thd/chat/{agentCode}/{sessionId}?token={token}
 assert.strictEqual(
   drawer.iframe.src,
@@ -874,6 +877,48 @@ dwsHandle.listeners.pointerdown[0](pointerEvent(1000, 400));
 dispatchWindowEvent('pointermove', pointerEvent(900, 400));
 dws.destroy();
 assert.deepStrictEqual(wsStates(), [], '拖拽中销毁不发宽度状态');
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+// zIndex 配置（options.zIndex）：组件层级整体平移（抽屉 / 内置确认弹窗 = zIndex，悬浮按钮 / 遮盖层 = zIndex - 1），
+// 默认 2147483647 浮在页面所有内容之上；接入方自定义弹窗需盖过抽屉时可调低（如 1000）
+const dzk = createDrawer({ env: 'dev', token: 't-zk', agentCode: 'a-zk', zIndex: 1000, mask: true, confirmOnClose: true, launcher: false });
+dzk.open();
+const dzkMask = body.children[0]; // 遮盖层先于抽屉挂载（launcher: false）
+const dzkHost = body.children[1];
+assert.strictEqual(dzkHost.style.zIndex, '1000', 'zIndex: 1000 → 抽屉层级 1000');
+assert.strictEqual(dzkMask.style.zIndex, '999', 'zIndex: 1000 → 遮盖层层级 999（低一层）');
+// 内置确认弹窗与抽屉同层（弹窗宿主后挂 DOM，天然盖在抽屉上方）
+dispatchWindowMessage(dzk.iframe.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-session-state',
+  sessionActive: true,
+});
+dzk.close();
+const dzkDlg = body.children[body.children.length - 1];
+assert.strictEqual(
+  dzkDlg.shadowRoot.querySelector('.confirm-overlay').style.zIndex,
+  '1000',
+  'zIndex: 1000 → 内置确认弹窗层级 1000（与抽屉同层）',
+);
+dzk.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除（含在途确认弹窗）');
+
+// zIndex 校验与收拢：非有限数字抛错；小数取整，超出 [0, 2147483647] 自动收拢
+assert.throws(() => createDrawer({ env: 'dev', token: 't', agentCode: 'a', zIndex: '1000' }), /options\.zIndex/);
+assert.throws(() => createDrawer({ env: 'dev', token: 't', agentCode: 'a', zIndex: NaN }), /options\.zIndex/);
+assert.throws(() => createDrawer({ env: 'dev', token: 't', agentCode: 'a', zIndex: Infinity }), /options\.zIndex/);
+const dzc = createDrawer({ env: 'dev', token: 't-zc', agentCode: 'a-zc', zIndex: 99999999999, launcher: false });
+dzc.open();
+assert.strictEqual(body.children[0].style.zIndex, '2147483647', 'zIndex 超上限：收拢到 2147483647');
+dzc.destroy();
+const dzn = createDrawer({ env: 'dev', token: 't-zn', agentCode: 'a-zn', zIndex: -5.5, launcher: false });
+dzn.open();
+assert.strictEqual(body.children[0].style.zIndex, '0', 'zIndex 为负：收拢到 0');
+dzn.destroy();
+const dzf = createDrawer({ env: 'dev', token: 't-zf', agentCode: 'a-zf', zIndex: 1000.9, launcher: false });
+dzf.open();
+assert.strictEqual(body.children[0].style.zIndex, '1000', 'zIndex 小数：取整为 1000');
+dzf.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
