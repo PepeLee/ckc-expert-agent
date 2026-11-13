@@ -48,9 +48,9 @@
         token: 'demo-token',
         agentCode: 'demo-agent',
         // launcher: false, // 不生成悬浮图标入口（不显示悬浮按钮，抽屉只用方法控制）
-        // mask: true, // 抽屉打开时给左侧页面区域加遮盖层
-        maskClosable: true, // 点击遮盖层关闭抽屉（默认不关闭）
-        closeSessionOnClose: true, // 关闭抽屉时关闭当前 agent 会话（默认不关闭）
+        mask: true, // 抽屉打开时给左侧页面区域加遮盖层
+        // maskClosable: true, // 点击遮盖层关闭抽屉（默认不关闭）
+        closeSessionOnClose: true, // 关闭抽屉时暂停当前 agent 会话（默认不暂停）
         newSessionOnLauncherOpen: true, // 从悬浮按钮打开抽屉时重新开启新会话（默认不重新开启）
         confirmOnClose: true, // 开启关闭确认弹窗：会话中关闭抽屉时弹组件内置确认框（默认不开启）
         confirmOnCloseText: '当前正在会话中，确定要关闭吗1111？', // 确认弹窗文案（选填；不传时用默认文案）

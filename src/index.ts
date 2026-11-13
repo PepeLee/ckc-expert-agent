@@ -55,7 +55,7 @@ export interface DrawerOptions {
   mask?: boolean;
   /** 开启遮盖层（mask: true）后，点击遮盖层是否关闭抽屉（默认不关闭） */
   maskClosable?: boolean;
-  /** 关闭抽屉时是否关闭当前 agent 会话（默认不关闭）；
+  /** 关闭抽屉时是否暂停当前 agent 会话（默认不暂停）；
    *  收到 iframe 的 drawer-ready 就绪消息后随配置消息（drawer-config）发给 iframe，由智能体页面按此配置执行 */
   closeSessionOnClose?: boolean;
   /** 从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）；
@@ -94,7 +94,7 @@ export interface DrawerConfigMessage {
   type: 'drawer-config';
   /** 配置项 */
   payload: {
-    /** 关闭抽屉时是否关闭当前 agent 会话 */
+    /** 关闭抽屉时是否暂停当前 agent 会话 */
     closeSessionOnClose: boolean;
     /** 从悬浮按钮打开抽屉时是否重新开启新会话 */
     newSessionOnLauncherOpen: boolean;

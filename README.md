@@ -11,7 +11,7 @@
 - 抽屉本身**不带关闭按钮**：iframe 页面在自己的 header 上提供**全屏**和**关闭**按钮，通过固定协议控制抽屉——全屏按钮发 `drawer-fullscreen`（抽屉宽度变为最大值，按钮变为「取消全屏」，再点恢复默认宽度），关闭按钮发 `drawer-close`（只把抽屉**移出视口**，`transform` 平移隐藏、不销毁 iframe，**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**）；再次点击悬浮按钮重新显示，宿主也可用 `drawer.close()` 关闭
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe（**自动打开抽屉**，未就绪自动排队、就绪后补发）、`drawer.receiveMessage()` 接收 iframe 发来的消息、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
-- 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否关闭当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
+- 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否暂停当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行
 - 可选 `options.newSessionOnLauncherOpen`（默认 `false`）：控制**从悬浮按钮打开抽屉时是否重新开启新会话**；同样随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行
 - 可选 `options.confirmOnClose`（默认 `false`）：开启**关闭确认弹窗**（弹窗由组件内置实现，独立 Shadow DOM 宿主挂在 body 上，z-index 同抽屉）——当前 agent 处于**正在会话状态**时关闭抽屉会弹出内置确认弹窗（确定=关闭 / 取消=保持显示；`Esc`=取消、`Enter`=确定、点遮罩=取消），不在会话状态直接关闭；此模式下**关闭方向由内置弹窗决定**（`onVisibilityChange` 回调仍触发用于感知，但返回值不控制关闭），显示方向仍可由回调返回值控制；弹窗在途时新的显隐请求 / `destroy()` 会收起弹窗（按取消处理）；弹窗提示文案可用 `options.confirmOnCloseText` 自定义（不传用默认文案）；不开启时可继续用回调返回布尔值 / `Promise<boolean>` 自行控制显隐
 - 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
@@ -73,7 +73,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
     resizable: true, // 选填：拖拽调整抽屉宽度（默认开启；false 关闭）
     mask: true, // 选填：是否给左侧页面区域加遮盖层
     maskClosable: true, // 选填：点击遮盖层是否关闭抽屉（默认不关闭）
-    closeSessionOnClose: true, // 选填：关闭抽屉时是否关闭当前 agent 会话（默认不关闭）
+    closeSessionOnClose: true, // 选填：关闭抽屉时暂停当前 agent 会话（默认不暂停）
     newSessionOnLauncherOpen: true, // 选填：从悬浮按钮打开抽屉时是否重新开启新会话（默认不重新开启）
     confirmOnClose: true, // 选填：开启关闭确认弹窗（会话中关闭时弹内置确认框；默认不开启）
     confirmOnCloseText: '当前有任务正在运行，关闭会取消任务，确认关闭吗？', // 选填：确认弹窗文案（不传用默认文案）
@@ -147,7 +147,7 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
 | `options.resizable` | `boolean` | `true` | 是否开启拖拽调整抽屉宽度（拖动抽屉左边框，限制在 min/max 之间）；默认开启，设为 `false` 关闭（不渲染拖拽把手），`setWidth()` / 全屏消息调整宽度不受影响 |
 | `options.mask` | `boolean` | `false` | 抽屉打开时是否给左侧页面区域加遮盖层（半透明遮罩，阻止操作宿主页） |
 | `options.maskClosable` | `boolean` | `false` | 开启遮盖层（`mask: true`）后，点击遮盖层是否关闭抽屉 |
-| `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否关闭当前 agent 会话；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
+| `options.closeSessionOnClose` | `boolean` | `false` | 关闭抽屉时是否暂停当前 agent 会话（默认不暂停）；收到 iframe 就绪消息（`drawer-ready`）后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行 |
 | `options.newSessionOnLauncherOpen` | `boolean` | `false` | 从悬浮按钮打开抽屉时是否重新开启新会话；随配置消息（`drawer-config`）发给 iframe，由智能体页面结合打开方式（`openSource`）按此配置执行 |
 | `options.confirmOnClose` | `boolean` | `false` | 是否开启**关闭确认弹窗**（组件内置）：开启后当前处于正在会话状态时关闭抽屉弹出内置确认弹窗（确定=关闭 / 取消=保持显示，`Esc`/遮罩=取消、`Enter`=确定），不在会话状态直接关闭；此时关闭方向由弹窗决定（`onVisibilityChange` 回调仍触发但返回值不控制关闭），显示方向仍可由回调返回值控制 |
 | `options.confirmOnCloseText` | `string` | `'当前有任务正在运行，关闭会取消任务，确认关闭吗？'` | 关闭确认弹窗的提示文案（配合 `options.confirmOnClose` 使用；不传用默认文案；按纯文本渲染，不含 HTML 解析） |
@@ -215,13 +215,13 @@ iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{opti
   source: 'ckc-expert-agent',
   type: 'drawer-config',
   payload: {
-    closeSessionOnClose: false, // 关闭抽屉时是否关闭当前 agent 会话（options.closeSessionOnClose，默认 false）
+    closeSessionOnClose: false, // 关闭抽屉时是否暂停当前 agent 会话（options.closeSessionOnClose，默认 false）
     newSessionOnLauncherOpen: false, // 从悬浮按钮打开抽屉时是否重新开启新会话（options.newSessionOnLauncherOpen，默认 false）
   }
 }
 ```
 
-由 iframe 页面按配置执行（抽屉关闭时是否结束当前 agent 会话、从悬浮按钮打开时是否重新开启新会话——配合显隐消息的 `openSource` 判断打开方式）。
+由 iframe 页面按配置执行（抽屉关闭时是否暂停当前 agent 会话、从悬浮按钮打开时是否重新开启新会话——配合显隐消息的 `openSource` 判断打开方式）。
 
 **iframe → 宿主**：iframe 内容方调用 `parent.postMessage(msg, '*')`，固定消息除第 2 条 `drawer-message`（业务消息，双向）外还有五种（其中 `drawer-fullscreen` / `drawer-close` 是**控制消息**，由组件内部消费、直接调整抽屉宽度/显隐，不派发给宿主回调）。
 
