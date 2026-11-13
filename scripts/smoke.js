@@ -264,6 +264,11 @@ const loaderTimer = fakeTimers[fakeTimers.length - 1];
 assert.strictEqual(loaderTimer.ms, 10000);
 assert.strictEqual(loaderTimer.cleared, false);
 
+// iframe 就绪前：右上角显示内置关闭图标（服务未启动等场景 drawer-ready 一直不来，用户可用它关掉抽屉）
+const fallbackClose = drawerHost.shadowRoot.querySelector('.close-btn');
+assert.ok(drawerHost.shadowRoot.innerHTML.includes('close-btn'), '抽屉渲染右上角内置关闭图标');
+assert.strictEqual(fallbackClose.classList.contains('ckc-close--hidden'), false, 'iframe 未就绪时内置关闭图标显示');
+
 // sendMessage 在 iframe 就绪前调用：排队，就绪后补发
 // 可选 sessionId（唤起已有 agent 会话）/ directSend（是否直接发送）随消息原样传到 iframe
 drawer.sendMessage({ message: '早安', files: [], sessionId: 'sess-old-00', directSend: true });
@@ -301,6 +306,7 @@ assert.deepStrictEqual(
 );
 assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), true, '收到 drawer-ready 后隐藏加载动画');
 assert.strictEqual(loaderTimer.cleared, true, '收到 drawer-ready 后取消兜底定时器');
+assert.strictEqual(fallbackClose.classList.contains('ckc-close--hidden'), true, '收到 drawer-ready 后内置关闭图标隐藏（关闭交还 iframe 页面的关闭按钮）');
 
 // iframe 加载后 sendMessage：立即直发固定协议消息
 // 可选 sessionId（唤起已有 agent 会话）/ directSend（是否直接发送）随消息原样传到 iframe
@@ -427,8 +433,8 @@ dispatchWindowMessage(
 );
 assert.strictEqual(gotSessionIds.length, 1, '非法消息不应派发给 receiveSessionId');
 
-// 抽屉不再有右上角关闭按钮（由 iframe 页 header 上的关闭按钮发 drawer-close 消息替代）
-assert.ok(!drawerHost.shadowRoot.innerHTML.includes('close-btn'), '抽屉内不应再有关闭按钮');
+// 右上角内置关闭图标仅是 iframe 未就绪时的兜底出口：就绪后保持隐藏，常驻关闭仍由 iframe 页 header 的关闭按钮（drawer-close）承担
+assert.strictEqual(fallbackClose.classList.contains('ckc-close--hidden'), true, '就绪后内置关闭图标保持隐藏');
 
 // iframe 发 drawer-close（header 关闭按钮）：只隐藏，不销毁（与原关闭按钮功能一致）
 dispatchWindowMessage({}, { source: 'ckc-expert-agent', type: 'drawer-close' });
@@ -919,6 +925,29 @@ const dzf = createDrawer({ env: 'dev', token: 't-zf', agentCode: 'a-zf', zIndex:
 dzf.open();
 assert.strictEqual(body.children[0].style.zIndex, '1000', 'zIndex 小数：取整为 1000');
 dzf.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+// ===== iframe 未就绪时的内置关闭图标（右上角 ✕）：点击与 close() 一致（只隐藏不销毁），就绪后隐藏 =====
+const dci = createDrawer({ env: 'dev', token: 't-ci', agentCode: 'a-ci' });
+dci.open();
+const dciHost = body.children[1]; // [0]=悬浮按钮，[1]=抽屉
+const ciBtn = dciHost.shadowRoot.querySelector('.close-btn');
+assert.strictEqual(ciBtn.classList.contains('ckc-close--hidden'), false, '未就绪时内置关闭图标显示');
+const ciSeen = [];
+dci.onVisibilityChange((v) => ciSeen.push(v));
+ciBtn.listeners.click[0](); // 点击内置关闭图标
+assert.strictEqual(dci.isOpen, false, '点击内置关闭图标：关闭抽屉');
+assert.strictEqual(dciHost.classList.contains('ckc-drawer--hidden'), true);
+assert.strictEqual(dciHost.inert, true);
+assert.strictEqual(body.children.length, 2, '点击内置关闭图标只隐藏不销毁（iframe 继续运行）');
+assert.deepStrictEqual(ciSeen, [false], 'onVisibilityChange 收到隐藏请求（同 close()）');
+// 关闭后重新打开：iframe 仍未就绪，图标仍显示
+dci.open();
+assert.strictEqual(ciBtn.classList.contains('ckc-close--hidden'), false, '重新打开时仍未就绪，图标仍显示');
+// iframe 就绪后图标隐藏（点击关闭交还 iframe 页面的关闭按钮）
+dispatchWindowMessage(dci.iframe.contentWindow, { source: 'ckc-expert-agent', type: 'drawer-ready' });
+assert.strictEqual(ciBtn.classList.contains('ckc-close--hidden'), true, '就绪后内置关闭图标隐藏');
+dci.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）

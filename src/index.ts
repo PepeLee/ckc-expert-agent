@@ -430,12 +430,44 @@ const DRAWER_STYLES = `
       transform: rotate(360deg);
     }
   }
+  /* iframe 未就绪（drawer-ready 未收到，如服务未启动、加载被拦截）时右上角的内置关闭图标：
+     此时 iframe 页面自己的关闭按钮不可用，给用户一个能关掉抽屉的出口；就绪后自动隐藏 */
+  .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.06);
+    color: #595959;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .close-btn:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: #262626;
+  }
+  .close-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+  }
+  .ckc-close--hidden {
+    display: none;
+  }
 `;
 
 /**
  * 在当前页面创建一个可拖动的悬浮圆形按钮。
  * 点击按钮初始化并显示右侧抽屉（内容为加载固定格式地址的 iframe）；
- * 抽屉本身不带关闭按钮，iframe 页面通过固定协议控制抽屉：
+ * 抽屉本身不常驻关闭按钮（iframe 未就绪时右上角显示内置关闭图标兜底，就绪后自动隐藏），
+ * iframe 页面通过固定协议控制抽屉：
  * 发 drawer-fullscreen 调整抽屉宽度（最大值/最小值），发 drawer-close 关闭抽屉
  * （关闭只是隐藏，iframe 不会被销毁、继续运行），也可由宿主通过 handle.close() 关闭；
  * 再次点击悬浮按钮可重新显示抽屉。
@@ -623,6 +655,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
+    // iframe 已就绪：隐藏右上角内置关闭图标（未就绪时的兜底关闭出口），关闭交还 iframe 页面的关闭按钮
+    drawerHost?.shadowRoot?.querySelector('.close-btn')?.classList.add('ckc-close--hidden');
     // 先发配置（关闭抽屉是否关会话 / 悬浮按钮打开是否新开会话），再发当前显隐和宽度状态，最后补发排队消息
     postToFrame({
       source: 'ckc-expert-agent',
@@ -842,6 +876,9 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       <style>${DRAWER_STYLES}</style>
       <div class="panel">
         ${options.resizable !== false ? '<div class="resize-handle"></div>' : ''}
+        <button class="close-btn" type="button" aria-label="关闭抽屉">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
         <div class="loader">
           <div class="loader-spinner"></div>
           <div class="loader-text">加载中…</div>
@@ -851,6 +888,12 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
 
     const panel = shadow.querySelector('.panel') as HTMLDivElement;
     const resizeHandle = shadow.querySelector('.resize-handle') as HTMLDivElement;
+
+    // 右上角内置关闭图标（iframe 未就绪期间显示）：服务未启动 / 加载被拦截时 drawer-ready 一直不来，
+    // iframe 页面自己的关闭按钮不可用，给用户一个能关掉抽屉的出口；点击与 close() 一致（只隐藏不销毁）。
+    // 收到 drawer-ready 后自动隐藏（见 onFrameReady），关闭交还 iframe 页面 header 上的关闭按钮。
+    const closeBtn = shadow.querySelector('.close-btn') as HTMLButtonElement;
+    closeBtn.addEventListener('click', close);
 
     const iframe = document.createElement('iframe');
     iframe.className = 'frame';

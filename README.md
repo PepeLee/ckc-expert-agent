@@ -9,6 +9,7 @@
 - 抽屉显示后先展示**加载动画**（转圈 +「加载中…」），iframe 发来就绪消息（`drawer-ready`）后消失，避免 iframe 初始化慢时抽屉长时间空白；若 10 秒仍未收到就绪消息（iframe 页面未实现该消息、加载被拦截等），自动停止动画露出 iframe 内容并在控制台提示
 - 抽屉固定在页面右侧，初始宽度 500px，**拖动左边框可调整宽度**（`options.resizable` 默认开启，支持鼠标和触摸；弱网/云桌面下拖拽事件丢失时自动兜底收尾，不会卡在拖拽状态）；设为 `false` 关闭拖拽调宽（不渲染拖拽把手），`setWidth()` / 全屏消息调整宽度不受影响；拖拽结束时把当前宽度是否为最大/最小值发给 iframe（`drawer-width-state`），供 iframe 同步「全屏 / 取消全屏」按钮状态
 - 抽屉本身**不带关闭按钮**：iframe 页面在自己的 header 上提供**全屏**和**关闭**按钮，通过固定协议控制抽屉——全屏按钮发 `drawer-fullscreen`（抽屉宽度变为最大值，按钮变为「取消全屏」，再点宽度变为最小值），关闭按钮发 `drawer-close`（只把抽屉**移出视口**，`transform` 平移隐藏、不销毁 iframe，**iframe 内容继续运行、仍可 postMessage，内部滚动条/表单等状态保留**）；再次点击悬浮按钮重新显示，宿主也可用 `drawer.close()` 关闭
+- iframe **未就绪**（`drawer-ready` 未收到，如智能体服务未启动、加载被拦截）期间，抽屉右上角显示**内置关闭图标（✕）**：此时 iframe 页面自己的关闭按钮不可用，用户点图标即可关闭抽屉（同 `close()`，只隐藏不销毁）；收到就绪消息后图标自动消失，关闭交还 iframe 页面 header 上的关闭按钮
 - **宿主与 iframe 的消息收发固定为协议 + 方法**：`drawer.sendMessage()` 发给 iframe（**自动打开抽屉**，未就绪自动排队、就绪后补发）、`drawer.receiveMessage()` 接收 iframe 发来的消息、`drawer.receiveSessionId()` 接收 iframe 生成的 sessionId、`drawer.onVisibilityChange()` 感知显隐（见下文「消息协议」）；宿主无需（也不应）直接使用 `postMessage` / `message` 事件
 - 可选**遮盖层**（`options.mask`，默认不开启）：开启后抽屉打开时给左侧页面区域盖一层半透明遮罩（阻止操作宿主页）；点击遮盖层是否关闭抽屉由 `options.maskClosable` 控制（默认不关闭）
 - 可选 `options.closeSessionOnClose`（默认 `false`）：控制**关闭抽屉时是否暂停当前 agent 会话**；收到 iframe 就绪消息后随配置消息（`drawer-config`）发给 iframe，由智能体页面按此配置执行

@@ -130,6 +130,37 @@ var e = 500, t = {
       transform: rotate(360deg);
     }
   }
+  /* iframe 未就绪（drawer-ready 未收到，如服务未启动、加载被拦截）时右上角的内置关闭图标：
+     此时 iframe 页面自己的关闭按钮不可用，给用户一个能关掉抽屉的出口；就绪后自动隐藏 */
+  .close-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 2;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: 50%;
+    background: rgba(0, 0, 0, 0.06);
+    color: #595959;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .close-btn:hover {
+    background: rgba(0, 0, 0, 0.12);
+    color: #262626;
+  }
+  .close-btn svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+  }
+  .ckc-close--hidden {
+    display: none;
+  }
 `;
 function h(h) {
 	var g, _, v, y, b;
@@ -195,7 +226,8 @@ function h(h) {
 		var e;
 		j == null || (e = j.shadowRoot) == null || (e = e.querySelector(".loader")) == null || e.classList.add("ckc-loader--hidden");
 	}, ne = () => {
-		for (L = !0, z !== null && (clearTimeout(z), z = null), te(), q({
+		var e;
+		for (L = !0, z !== null && (clearTimeout(z), z = null), te(), j == null || (e = j.shadowRoot) == null || (e = e.querySelector(".close-btn")) == null || e.classList.add("ckc-close--hidden"), q({
 			source: "ckc-expert-agent",
 			type: "drawer-config",
 			payload: {
@@ -290,13 +322,18 @@ function h(h) {
       <style>${m}</style>
       <div class="panel">
         ${h.resizable === !1 ? "" : "<div class=\"resize-handle\"></div>"}
+        <button class="close-btn" type="button" aria-label="关闭抽屉">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </button>
         <div class="loader">
           <div class="loader-spinner"></div>
           <div class="loader-text">加载中…</div>
         </div>
       </div>
     `;
-		let r = n.querySelector(".panel"), i = n.querySelector(".resize-handle"), a = document.createElement("iframe");
+		let r = n.querySelector(".panel"), i = n.querySelector(".resize-handle");
+		n.querySelector(".close-btn").addEventListener("click", Q);
+		let a = document.createElement("iframe");
 		if (a.className = "frame", a.title = "ckc-expert-agent", a.allow = "focus", a.src = f(x, h.token, h.agentCode, h.sessionId), r.appendChild(a), i == null || i.addEventListener("pointerdown", (e) => {
 			if (e.pointerType === "mouse" && e.button !== 0) return;
 			e.preventDefault(), B == null || B();
