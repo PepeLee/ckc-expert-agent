@@ -500,7 +500,7 @@ dispatchDocEvent('visibilitychange');
 global.document.visibilityState = 'visible';
 assert.strictEqual(drawerHost.classList.contains('ckc-drawer--dragging'), false);
 
-// iframe 发 drawer-fullscreen（header 全屏按钮）：宽度调整为最大值 / 恢复默认值
+// iframe 发 drawer-fullscreen（header 全屏按钮）：宽度调整为最大值 / 最小值
 assert.strictEqual(drawerHost.style.width, '530px', '前置：当前宽度为拖拽后的 530px');
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
@@ -513,7 +513,7 @@ dispatchWindowMessage(frame.contentWindow, {
   type: 'drawer-fullscreen',
   fullscreen: false,
 });
-assert.strictEqual(drawerHost.style.width, '500px', '取消全屏 = 恢复默认宽度');
+assert.strictEqual(drawerHost.style.width, '500px', '取消全屏 = 最小宽度（minWidth 默认 500）');
 // 非法 payload（fullscreen 非布尔）/ 非本 iframe 来源 / 非协议来源：一律忽略
 dispatchWindowMessage(frame.contentWindow, {
   source: 'ckc-expert-agent',
@@ -793,6 +793,26 @@ assert.ok(
 drsOff.setWidth(600);
 assert.strictEqual(drsOffHost.style.width, '600px', '关闭拖拽调宽时 setWidth 仍可用');
 drsOff.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
+// 全屏消息宽度语义：全屏 = maxWidth，取消全屏 = minWidth（不是初始宽度 options.width）
+const dfs = createDrawer({ env: 'dev', token: 't-fs', agentCode: 'a-fs', width: 800, minWidth: 500, maxWidth: 1000 });
+dfs.open();
+const dfsHost = body.children[1];
+assert.strictEqual(dfsHost.style.width, '800px', '前置：初始宽度 800px（与 minWidth 不同）');
+dispatchWindowMessage(dfs.iframe.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: true,
+});
+assert.strictEqual(dfsHost.style.width, '1000px', '全屏 = 设为最大宽度（maxWidth 1000）');
+dispatchWindowMessage(dfs.iframe.contentWindow, {
+  source: 'ckc-expert-agent',
+  type: 'drawer-fullscreen',
+  fullscreen: false,
+});
+assert.strictEqual(dfsHost.style.width, '500px', '取消全屏 = 设为最小宽度（minWidth 500，而非初始宽度 800）');
+dfs.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）

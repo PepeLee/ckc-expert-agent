@@ -239,7 +239,7 @@
 
         // ---- header 上的全屏按钮：固定协议 drawer-fullscreen，宿主组件据此调整抽屉宽度 ----
         // 全屏（fullscreen: true）→ 抽屉宽度变为最大值，按钮变为「取消全屏」；
-        // 取消全屏（fullscreen: false）→ 抽屉宽度恢复默认值
+        // 取消全屏（fullscreen: false）→ 抽屉宽度变为最小值
         var fullscreen = false;
         var fsBtn = document.getElementById('fs-btn');
         fsBtn.addEventListener('click', function () {

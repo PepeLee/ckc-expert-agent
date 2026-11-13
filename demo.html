@@ -54,8 +54,11 @@
         newSessionOnLauncherOpen: true, // 从悬浮按钮打开抽屉时重新开启新会话（默认不重新开启）
         confirmOnClose: true, // 开启关闭确认弹窗：会话中关闭抽屉时弹组件内置确认框（默认不开启）
         confirmOnCloseText: '当前正在会话中，确定要关闭吗1111？', // 确认弹窗文案（选填；不传时用默认文案）
-        resizable: false, // 关闭拖拽调整抽屉宽度（默认开启）
+        resizable: true, // 关闭拖拽调整抽屉宽度（默认开启）
         // sessionId: 'demo-session', // 选填；不传时 iframe 会生成 sessionId 并通过 receiveSessionId 回传
+        width: 1144,
+        maxWidth: 1144,
+        minWidth: 400
       });
 
       // 收发消息统一走 DrawerHandle 固定方法（sendMessage / receiveMessage / receiveSessionId / onVisibilityChange），

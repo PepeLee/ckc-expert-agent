@@ -45,9 +45,9 @@ export interface DrawerOptions {
   sessionId?: string;
   /** 初始宽度（px），默认 500 */
   width?: number;
-  /** 最小宽度（px），默认 500 */
+  /** 最小宽度（px），默认 500；取消全屏（drawer-fullscreen: false）时抽屉宽度变为该值 */
   minWidth?: number;
-  /** 最大宽度（px），默认视口宽度 */
+  /** 最大宽度（px），默认视口宽度；全屏（drawer-fullscreen: true）时抽屉宽度变为该值 */
   maxWidth?: number;
   /** 是否开启拖拽调整抽屉宽度（默认开启）；设为 false 时关闭拖拽调宽（不渲染拖拽把手） */
   resizable?: boolean;
@@ -138,7 +138,7 @@ export interface DrawerReadyMessage {
 
 /**
  * iframe 发给宿主的全屏消息（type: drawer-fullscreen）：
- * fullscreen: true 时抽屉宽度调整为最大值（maxWidth），false 时恢复默认宽度（options.width，未传则 500）。
+ * fullscreen: true 时抽屉宽度调整为最大值（options.maxWidth），false 时调整为最小值（options.minWidth）。
  * 由组件内部消费（调整抽屉宽度），不派发给宿主回调。
  */
 export interface DrawerFullscreenMessage {
@@ -423,7 +423,7 @@ const DRAWER_STYLES = `
  * 在当前页面创建一个可拖动的悬浮圆形按钮。
  * 点击按钮初始化并显示右侧抽屉（内容为加载固定格式地址的 iframe）；
  * 抽屉本身不带关闭按钮，iframe 页面通过固定协议控制抽屉：
- * 发 drawer-fullscreen 调整抽屉宽度（最大值/默认值），发 drawer-close 关闭抽屉
+ * 发 drawer-fullscreen 调整抽屉宽度（最大值/最小值），发 drawer-close 关闭抽屉
  * （关闭只是隐藏，iframe 不会被销毁、继续运行），也可由宿主通过 handle.close() 关闭；
  * 再次点击悬浮按钮可重新显示抽屉。
  * 抽屉以 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不会污染接入方页面。
@@ -452,8 +452,6 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     Math.min(options.maxWidth ?? window.innerWidth, window.innerWidth),
   );
   let width = clamp(options.width ?? DEFAULT_WIDTH, minWidth, maxWidth);
-  /** 默认宽度：取消全屏（drawer-fullscreen: false）时恢复到的初始宽度 */
-  const initialWidth = width;
 
   // iframe 内容方接收 postMessage 的目标 origin，推导失败时退回 '*'
   let frameTargetOrigin = '*';
@@ -553,10 +551,10 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       if (typeof active !== 'boolean') return;
       sessionActive = active;
     } else if (data.type === 'drawer-fullscreen') {
-      // iframe 内全屏按钮：true 调到最大宽度，false 恢复默认宽度（组件内部消费，不派发给宿主回调）
+      // iframe 内全屏按钮：true 调到最大宽度，false 调到最小宽度（组件内部消费，不派发给宿主回调）
       const fullscreen = data.fullscreen;
       if (typeof fullscreen !== 'boolean') return;
-      applyWidth(fullscreen ? maxWidth : initialWidth);
+      applyWidth(fullscreen ? maxWidth : minWidth);
     } else if (data.type === 'drawer-close') {
       // iframe 内关闭按钮：与原抽屉关闭按钮一致，只隐藏不销毁
       close();
