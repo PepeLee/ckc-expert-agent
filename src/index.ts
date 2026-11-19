@@ -259,7 +259,7 @@ const CONFIRM_STYLES = `
   .confirm-card { position: relative; box-sizing: border-box; background: #fff; border-radius: 8px; box-shadow: 0 6px 24px rgba(0, 0, 0, 0.2); padding: 20px 24px; max-width: 360px; width: calc(100vw - 48px); }
   .confirm-message { font-size: 14px; color: #333; line-height: 1.6; margin-bottom: 16px; }
   .confirm-actions { display: flex; justify-content: flex-end; gap: 8px; }
-  .confirm-btn { min-width: 64px; height: 32px; padding: 0 16px; border-radius: 4px; border: 1px solid #d9d9d9; background: #fff; color: #333; font-size: 13px; cursor: pointer; }
+  .confirm-btn { min-width: 64px; height: 32px; padding: 0 16px; border-radius: 4px; border: 1px solid #d9d9d9; background: #fff; color: #333; font-size: 13px; cursor: pointer; outline: none; }
   .confirm-btn--cancel:hover { border-color: #4096ff; color: #4096ff; }
   .confirm-btn--ok { background: #1677ff; border-color: #1677ff; color: #fff; }
   .confirm-btn--ok:hover { background: #4096ff; border-color: #4096ff; }

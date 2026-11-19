@@ -958,6 +958,12 @@ for (const cls of usedClasses) {
   assert.ok(srcText.includes('.' + cls), `样式缺少 .${cls} 选择器，classList 操作会静默失效`);
 }
 
+// 确认弹窗按钮去掉默认焦点黑框（弹窗打开时会程序化 focus「确定」按钮，UA 默认 outline 是一圈黑框）
+assert.ok(
+  /\.confirm-btn\s*\{[^}]*outline:\s*none/.test(srcText),
+  '确认弹窗按钮样式应含 outline: none 去掉焦点黑框',
+);
+
 // ===== npm 包产物：入口字段指向的文件真实存在，TypeScript 类型声明导出完整 =====
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 assert.strictEqual(pkg.private, undefined, 'package.json 不应标记 private（会导致无法 npm 发布）');
