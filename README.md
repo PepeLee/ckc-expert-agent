@@ -18,6 +18,7 @@
 - 可选 `options.launcher`（默认 `true`）：控制**是否生成悬浮图标入口**；设为 `false` 时不生成悬浮按钮，抽屉只通过 `drawer.open()` / `drawer.sendMessage()` 等方法控制
 - **显隐默认直接执行**（打开/关闭立即生效）；`onVisibilityChange` 回调也可**自行控制显隐**：回调在显隐生效前触发（第一参为请求的显隐，第二参 `sessionActive` 为**当前 iframe 的 agent 是否处于正在会话状态**，由 iframe 发 `drawer-session-state` 上报、组件缓存），返回布尔值或 `Promise<boolean>` 接管本次显隐（**返回值即最终状态：`true`=显示 / `false`=隐藏**），不返回（或返回非布尔）则按默认直接显示/隐藏；回调返回 `Promise` 时显隐在结算后生效（期间新的显隐请求 / `destroy()` 会取消本次结果），多个回调按注册顺序以第一个明确布尔值为准，回调抛错 / 拒绝按默认处理
 - 抽屉浮在接入方页面最上方（`z-index: 2147483647`，可用 `options.zIndex` 调整组件整体层级——接入方自定义弹窗需盖过抽屉时调低）
+- 同一页面同时最多 **10 个**活的抽屉实例（`window` 全局计数，多份脚本副本共享）：超出时 `createCkcDrawer` 抛 `Error` 且不创建任何 DOM；`destroy()` 释放名额（`close()` 只隐藏、不释放）
 - 基于 Shadow DOM 渲染，不受接入方页面 CSS 影响，也不污染接入方页面
 
 ## 开发与构建
@@ -156,11 +157,15 @@ window 上**只挂载一个方法**：
 
 打开、关闭等行为不再挂全局方法，统一通过 `createCkcDrawer` 返回的 `DrawerHandle` 控制（见下方 API）。
 
+> 组件另在 window 上维护一个内部实例计数 `__ckcExpertAgentLiveInstances__`（控制同一页面的实例上限，多份脚本副本共享），接入方不应修改。
+
 ## API
 
 ### `createDrawer(options): DrawerHandle`
 
 iframe 实际加载地址：`{域名}/center/thd/chat/{options.agentCode}[/{options.sessionId}]?token={options.token}`（域名由 `options.env` 决定；`sessionId` 选填，不传则不拼）
+
+同一页面同时最多 **10 个**活实例（含未打开过的）：超出抛 `Error`、不创建任何 DOM；`destroy()` 释放名额（`close()` 只隐藏不释放）。计数挂在 `window.__ckcExpertAgentLiveInstances__`（多份脚本副本共享，接入方不应修改）。
 
 | 参数 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |

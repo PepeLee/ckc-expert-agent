@@ -950,6 +950,40 @@ assert.strictEqual(ciBtn.classList.contains('ckc-close--hidden'), true, '就绪�
 dci.destroy();
 assert.strictEqual(body.children.length, 0, '销毁后全部移除');
 
+// ===== 实例数量上限：window 全局计数（多份脚本副本共享），同时最多 10 个活实例，超限抛 Error，destroy() 释放名额 =====
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 0, '此前实例均已销毁，全局计数归零');
+const insts = [];
+for (let i = 0; i < 10; i++) {
+  insts.push(createDrawer({ env: 'dev', token: `t-n${i}`, agentCode: `a-n${i}`, launcher: false }));
+}
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 10, '创建 10 个后计数为 10');
+// 第 11 个：抛 Error（不是 TypeError）、不创建任何 DOM、不占名额
+assert.throws(
+  () => createDrawer({ env: 'dev', token: 't-n11', agentCode: 'a-n11', launcher: false }),
+  (err) => err.constructor === Error && /不能超过 10 个/.test(err.message),
+);
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 10, '抛错不占名额');
+assert.strictEqual(body.children.length, 0, '抛错不创建任何 DOM');
+insts[0].destroy();
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 9, 'destroy() 释放名额');
+insts[0].destroy();
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 9, '重复 destroy 不重复释放（幂等）');
+const extra = createDrawer({ env: 'dev', token: 't-n11', agentCode: 'a-n11', launcher: false });
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 10, '释放名额后可再创建');
+extra.open();
+extra.close();
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 10, 'close() 只隐藏，不释放名额');
+extra.destroy();
+for (const d of insts.slice(1)) d.destroy();
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 0, '全部销毁后计数归零');
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+// window 上的计数被外部改坏（非数字）时按 0 起算，组件不被脏值卡死
+global.window.__ckcExpertAgentLiveInstances__ = 'garbage';
+const dg = createDrawer({ env: 'dev', token: 't-g', agentCode: 'a-g', launcher: false });
+assert.strictEqual(global.window.__ckcExpertAgentLiveInstances__, 1, '脏值按 0 起算后可正常创建');
+dg.destroy();
+assert.strictEqual(body.children.length, 0, '销毁后全部移除');
+
 // 类名一致性：JS classList 操作的类必须在样式里有对应选择器（类名写错会让样式静默不生效）
 const srcText = fs.readFileSync(path.join(__dirname, '..', 'src', 'index.ts'), 'utf8');
 const usedClasses = new Set();

@@ -211,6 +211,7 @@ export interface DrawerHandle {
 }
 /**
  * 在当前页面创建一个可拖动的悬浮圆形按钮。
+ * 同一页面同时最多 MAX_INSTANCES 个活实例（window 全局计数，多份脚本副本共享），超出抛错、不创建任何 DOM。
  * 点击按钮初始化并显示右侧抽屉（内容为加载固定格式地址的 iframe）；
  * 抽屉本身不常驻关闭按钮（iframe 未就绪时右上角显示内置关闭图标兜底，就绪后自动隐藏），
  * iframe 页面通过固定协议控制抽屉：
@@ -224,6 +225,8 @@ declare global {
     interface Window {
         /** 创建页面上的悬浮按钮 + 右侧抽屉，返回 DrawerHandle 控制显隐 */
         createCkcDrawer: typeof createDrawer;
+        /** 组件内部的全局活实例计数（同一页面实例上限用，多份脚本副本共享）；接入方不应修改 */
+        __ckcExpertAgentLiveInstances__?: number;
     }
 }
 

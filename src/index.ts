@@ -244,6 +244,10 @@ const ENV_DOMAINS: Record<DrawerEnv, string> = {
 const DEFAULT_MIN_WIDTH = 500;
 /** 默认组件层级（32 位有符号整数最大值），保证抽屉浮在接入方页面所有内容之上；可用 options.zIndex 调整 */
 const Z_INDEX = 2147483647;
+/** 同一页面同时存在的抽屉实例上限（window 全局计数，多份脚本副本共享） */
+const MAX_INSTANCES = 10;
+/** window 上的活实例计数键（组件内部使用，接入方不应修改） */
+const INSTANCE_COUNT_KEY = '__ckcExpertAgentLiveInstances__';
 const LAUNCHER_SIZE = 48;
 const LAUNCHER_MARGIN = 24;
 /** 位移超过该阈值（px）视为拖动，否则视为点击 */
@@ -267,6 +271,10 @@ const CONFIRM_STYLES = `
 
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(Math.max(value, min), max);
+
+/** 读取 window 全局的活实例计数（被外部改坏为非数字时按 0 起算，保证组件不被脏值卡死） */
+const getLiveInstances = (): number =>
+  typeof window[INSTANCE_COUNT_KEY] === 'number' ? window[INSTANCE_COUNT_KEY] : 0;
 
 /** 校验产物文件条目（DrawerFile） */
 const isDrawerFile = (f: unknown): f is DrawerFile =>
@@ -465,6 +473,7 @@ const DRAWER_STYLES = `
 
 /**
  * 在当前页面创建一个可拖动的悬浮圆形按钮。
+ * 同一页面同时最多 MAX_INSTANCES 个活实例（window 全局计数，多份脚本副本共享），超出抛错、不创建任何 DOM。
  * 点击按钮初始化并显示右侧抽屉（内容为加载固定格式地址的 iframe）；
  * 抽屉本身不常驻关闭按钮（iframe 未就绪时右上角显示内置关闭图标兜底，就绪后自动隐藏），
  * iframe 页面通过固定协议控制抽屉：
@@ -498,6 +507,16 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
   }
   /** 组件整体层级：抽屉 / 内置确认弹窗 = zIndex，悬浮按钮 / 遮盖层 = zIndex - 1；小数取整，范围收拢到 [0, 2147483647] */
   const zIndex = clamp(Math.trunc(options.zIndex ?? Z_INDEX), 0, Z_INDEX);
+
+  // 同一页面同时存在的实例上限（window 全局计数，多份脚本副本共享）：超限抛错、不创建任何 DOM；
+  // destroy() 释放名额（close() 只隐藏不释放）；先占名额再创建，创建过程本身不会再失败
+  const liveInstances = getLiveInstances();
+  if (liveInstances >= MAX_INSTANCES) {
+    throw new Error(
+      `[ckc-expert-agent] createDrawer: 同时存在的抽屉实例不能超过 ${MAX_INSTANCES} 个（请先对旧实例调用 destroy() 释放）`,
+    );
+  }
+  window[INSTANCE_COUNT_KEY] = liveInstances + 1;
 
   const minWidth = Math.max(0, options.minWidth ?? DEFAULT_MIN_WIDTH);
   const maxWidth = Math.max(
@@ -1144,6 +1163,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     destroy: (): void => {
       if (destroyed) return;
       destroyed = true;
+      // 释放全局实例名额（window 全局计数，多份脚本副本共享；上方幂等 guard 保证只释放一次）
+      window[INSTANCE_COUNT_KEY] = Math.max(0, getLiveInstances() - 1);
       activeDragEnd?.();
       dismissConfirm?.(); // 收起在途的关闭确认弹窗（按取消处理）
       if (loaderFallbackTimer !== null) {
@@ -1173,6 +1194,8 @@ declare global {
   interface Window {
     /** 创建页面上的悬浮按钮 + 右侧抽屉，返回 DrawerHandle 控制显隐 */
     createCkcDrawer: typeof createDrawer;
+    /** 组件内部的全局活实例计数（同一页面实例上限用，多份脚本副本共享）；接入方不应修改 */
+    __ckcExpertAgentLiveInstances__?: number;
   }
 }
 
