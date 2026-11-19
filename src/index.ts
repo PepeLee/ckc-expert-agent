@@ -253,7 +253,7 @@ const LAUNCHER_MARGIN = 24;
 /** 位移超过该阈值（px）视为拖动，否则视为点击 */
 const DRAG_THRESHOLD = 5;
 /** 未收到 iframe 的 drawer-ready 就绪消息时，加载动画的最长显示时间（ms）；超时停止动画，避免一直转圈挡住 iframe 内容 */
-const LOADER_FALLBACK_MS = 10000;
+const LOADER_FALLBACK_MS = 30000;
 /** 关闭确认弹窗的默认提示文案（options.confirmOnCloseText 未传时使用） */
 const DEFAULT_CONFIRM_TEXT = '当前有任务正在运行，关闭会取消任务，确认关闭吗？';
 /** 关闭确认弹窗（options.confirmOnClose）的样式：全屏遮罩 + 居中卡片，浮在页面最上方 */

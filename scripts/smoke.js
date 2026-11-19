@@ -261,7 +261,7 @@ assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), false);
 
 // 加载动画兜底定时器已武装（超时未就绪也会停止动画，避免一直转圈）
 const loaderTimer = fakeTimers[fakeTimers.length - 1];
-assert.strictEqual(loaderTimer.ms, 10000);
+assert.strictEqual(loaderTimer.ms, 30000);
 assert.strictEqual(loaderTimer.cleared, false);
 
 // iframe 就绪前：右上角显示内置关闭图标（服务未启动等场景 drawer-ready 一直不来，用户可用它关掉抽屉）
@@ -613,7 +613,7 @@ assert.strictEqual(windowMsgs.length, 0, '宿主不再收到原始 postMessage �
 const d2 = createDrawer({ env: 'dev', token: 't0', agentCode: 'a0' });
 d2.open();
 const timer2 = fakeTimers[fakeTimers.length - 1];
-assert.strictEqual(timer2.ms, 10000);
+assert.strictEqual(timer2.ms, 30000);
 const loader2 = body.children[1].shadowRoot.querySelector('.loader');
 assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), false);
 timer2.fn(); // 模拟超时
