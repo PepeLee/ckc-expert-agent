@@ -80,7 +80,8 @@ var e = "<svg xmlns=\"http://www.w3.org/2000/svg\" xmlns:xlink=\"http://www.w3.o
     cursor: ew-resize;
     touch-action: none;
     background-color: transparent;
-    z-index: 1;
+    /* 盖在加载页（z-index: 1）之上：iframe 加载期间拖拽的高亮把手也要可见 */
+    z-index: 2;
   }
   .resize-handle:hover,
   :host(.ckc-drawer--dragging) .resize-handle {

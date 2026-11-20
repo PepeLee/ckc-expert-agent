@@ -1003,6 +1003,12 @@ assert.ok(
   '确认弹窗按钮样式应含 outline: none 去掉焦点黑框',
 );
 
+// 拖拽把手盖在加载页（z-index: 1）之上：否则 iframe 加载期间拖拽的高亮把手被加载页挡住
+assert.ok(
+  /\.resize-handle\s*\{[^}]*z-index:\s*2/.test(srcText),
+  '拖拽把手的 z-index 应高于加载页，加载中拖拽高亮才可见',
+);
+
 // ===== npm 包产物：入口字段指向的文件真实存在，TypeScript 类型声明导出完整 =====
 const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'package.json'), 'utf8'));
 assert.strictEqual(pkg.private, undefined, 'package.json 不应标记 private（会导致无法 npm 发布）');
