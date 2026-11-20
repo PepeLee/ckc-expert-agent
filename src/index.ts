@@ -252,7 +252,7 @@ const LAUNCHER_SIZE = 48;
 const LAUNCHER_MARGIN = 24;
 /** 位移超过该阈值（px）视为拖动，否则视为点击 */
 const DRAG_THRESHOLD = 5;
-/** 未收到 iframe 的 drawer-ready 就绪消息时，加载动画的最长显示时间（ms）；超时停止动画，避免一直转圈挡住 iframe 内容 */
+/** 未收到 iframe 的 drawer-ready 就绪消息时，加载页的最长显示时间（ms）；超时收起（不补进度），避免一直挡住 iframe 内容 */
 const LOADER_FALLBACK_MS = 30000;
 /** 关闭确认弹窗的默认提示文案（options.confirmOnCloseText 未传时使用） */
 const DEFAULT_CONFIRM_TEXT = '当前有任务正在运行，关闭会取消任务，确认关闭吗？';
@@ -405,7 +405,9 @@ const DRAWER_STYLES = `
     border: 0;
     background: #ffffff;
   }
-  /* iframe 就绪（drawer-ready）前的加载动画，避免 iframe 初始化慢时抽屉长时间空白 */
+  /* iframe 就绪（drawer-ready）前的加载页：小蓝图标居中 + 模拟进度条 + 提示文案（浅蓝科技感，底色 #E9F1FF 与小蓝色系统一）；
+     就绪后进度补满 100%（.ckc-loader--complete）再淡出；超时兜底（LOADER_FALLBACK_MS）不补进度直接淡出。
+     全部动效纯 CSS 驱动，不占 JS 定时器 */
   .loader {
     position: absolute;
     inset: 0;
@@ -414,29 +416,156 @@ const DRAWER_STYLES = `
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    background: #ffffff;
-    color: #8c8c8c;
-    font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    font-size: 14px;
+    gap: 24px;
+    background:
+      radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 55%),
+      #E9F1FF;
+    overflow: hidden;
     pointer-events: none;
   }
-  .ckc-loader--hidden {
-    display: none;
+  /* 科技感底纹：细网格 */
+  .loader::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(37, 99, 180, 0.08) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgba(37, 99, 180, 0.08) 0 1px, transparent 1px 32px);
   }
-  .loader-spinner {
-    box-sizing: border-box;
-    width: 32px;
-    height: 32px;
-    border: 3px solid #e8e8e8;
-    border-top-color: #1677ff;
-    border-radius: 50%;
-    animation: ckc-loader-spin 0.8s linear infinite;
+  /* 科技感底纹：自上而下缓慢扫过的高光带 */
+  .loader::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 30%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.65) 50%, rgba(255, 255, 255, 0) 100%);
+    animation: ckc-loader-scan 3.2s linear infinite;
   }
-  @keyframes ckc-loader-spin {
-    to {
-      transform: rotate(360deg);
+  @keyframes ckc-loader-scan {
+    from {
+      top: -30%;
     }
+    to {
+      top: 100%;
+    }
+  }
+  /* 小蓝图标：悬浮呼吸 + 脉冲光环 + 辉光 */
+  .loader-icon {
+    position: relative;
+    z-index: 1;
+    width: 96px;
+    height: 96px;
+    animation: ckc-loader-float 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 22px rgba(64, 158, 255, 0.45));
+  }
+  .loader-icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .loader-icon::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 2px solid rgba(94, 168, 255, 0.45);
+    animation: ckc-loader-pulse 2s ease-out infinite;
+  }
+  @keyframes ckc-loader-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  @keyframes ckc-loader-pulse {
+    0% {
+      transform: scale(0.86);
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(1.25);
+      opacity: 0;
+    }
+  }
+  /* 模拟进度条：缓慢推进到 92%，就绪（ckc-loader--complete）补满 100% */
+  .loader-progress {
+    position: relative;
+    z-index: 1;
+    width: 240px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(22, 119, 255, 0.14);
+    overflow: hidden;
+  }
+  .loader-progress-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #60a5fa 100%);
+    background-size: 200% 100%;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.55);
+    transform: scaleX(0.02);
+    transform-origin: left center;
+    animation: ckc-loader-creep 10s ease-out forwards, ckc-loader-shine 1.6s linear infinite;
+  }
+  @keyframes ckc-loader-creep {
+    from {
+      transform: scaleX(0.02);
+    }
+    to {
+      transform: scaleX(0.92);
+    }
+  }
+  @keyframes ckc-loader-shine {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  .ckc-loader--complete .loader-progress-fill {
+    /* 覆盖 creep 动画（animation 简写重置），进度补满 100% */
+    animation: ckc-loader-shine 1.6s linear infinite;
+    transform: scaleX(1);
+    transition: transform 0.35s ease;
+  }
+  .loader-text {
+    position: relative;
+    z-index: 1;
+    color: #3c5f9a;
+    font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-indent: 4px;
+  }
+  .loader-text::after {
+    content: '';
+    animation: ckc-loader-dots 1.4s infinite;
+  }
+  @keyframes ckc-loader-dots {
+    0% {
+      content: '';
+    }
+    25% {
+      content: '.';
+    }
+    50% {
+      content: '..';
+    }
+    75% {
+      content: '...';
+    }
+  }
+  /* 隐藏 = 淡出（留一瞬给 100% 进度）；loader 本身 pointer-events: none，不挡 iframe 交互 */
+  .ckc-loader--hidden {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease 0.25s, visibility 0s linear 0.65s;
   }
   /* iframe 未就绪（drawer-ready 未收到，如服务未启动、加载被拦截）时右上角的内置关闭图标：
      此时 iframe 页面自己的关闭按钮不可用，给用户一个能关掉抽屉的出口；就绪后自动隐藏 */
@@ -656,7 +785,7 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     }
   };
 
-  /** 隐藏加载动画（iframe 就绪或超时兜底时调用） */
+  /** 收起加载页（iframe 就绪或超时兜底时调用；淡出由 .ckc-loader--hidden 的 CSS 过渡完成） */
   const hideLoader = (): void => {
     drawerHost?.shadowRoot?.querySelector('.loader')?.classList.add('ckc-loader--hidden');
   };
@@ -674,6 +803,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
       loaderFallbackTimer = null;
     }
     hideLoader();
+    // iframe 已就绪：进度补满 100%（.ckc-loader--complete），加载页随之淡出（见 hideLoader / 样式）
+    drawerHost?.shadowRoot?.querySelector('.loader')?.classList.add('ckc-loader--complete');
     // iframe 已就绪：隐藏右上角内置关闭图标（未就绪时的兜底关闭出口），关闭交还 iframe 页面的关闭按钮
     drawerHost?.shadowRoot?.querySelector('.close-btn')?.classList.add('ckc-close--hidden');
     // 先发配置（关闭抽屉是否关会话 / 悬浮按钮打开是否新开会话），再发当前显隐和宽度状态，最后补发排队消息
@@ -899,8 +1030,9 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
         <div class="loader">
-          <div class="loader-spinner"></div>
-          <div class="loader-text">加载中…</div>
+          <div class="loader-icon">${LAUNCHER_ICON_SVG}</div>
+          <div class="loader-progress"><div class="loader-progress-fill"></div></div>
+          <div class="loader-text">正在努力加载中</div>
         </div>
       </div>
     `;
@@ -1011,8 +1143,8 @@ export function createDrawer(options: DrawerOptions): DrawerHandle {
     host.style.zIndex = String(zIndex); // 抽屉浮在页面内容上方（默认 2147483647，可用 options.zIndex 调整）
     (document.body ?? document.documentElement).appendChild(host);
 
-    // 加载动画兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息、加载被拦截或网络异常）时，
-    // 停止动画露出 iframe 内容，避免一直转圈挡住整个抽屉
+    // 加载页兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息、加载被拦截或网络异常）时，
+    // 收起加载页露出 iframe 内容（不补进度），避免一直挡住整个抽屉
     loaderFallbackTimer = setTimeout(() => {
       loaderFallbackTimer = null;
       if (frameReady) return;

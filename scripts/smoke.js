@@ -255,11 +255,14 @@ assert.strictEqual(
 assert.strictEqual(drawer.iframe.allow, 'focus');
 const frame = drawer.iframe;
 
-// iframe 就绪前：抽屉内显示加载动画，避免 iframe 初始化慢时长时间空白
+// iframe 就绪前：抽屉内显示加载页（小蓝图标 + 模拟进度条 + 提示文案），避免 iframe 初始化慢时长时间空白
 const loader = drawerHost.shadowRoot.querySelector('.loader');
 assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), false);
+assert.ok(drawerHost.shadowRoot.innerHTML.includes('loader-icon'), '加载页渲染小蓝图标');
+assert.ok(drawerHost.shadowRoot.innerHTML.includes('loader-progress'), '加载页渲染模拟进度条');
+assert.ok(drawerHost.shadowRoot.innerHTML.includes('正在努力加载中'), '加载页渲染提示文案');
 
-// 加载动画兜底定时器已武装（超时未就绪也会停止动画，避免一直转圈）
+// 加载页兜底定时器已武装（超时未就绪也会收起加载页）
 const loaderTimer = fakeTimers[fakeTimers.length - 1];
 assert.strictEqual(loaderTimer.ms, 30000);
 assert.strictEqual(loaderTimer.cleared, false);
@@ -304,7 +307,8 @@ assert.deepStrictEqual(
   toFrame('drawer-message').map((m) => m.msg.payload),
   [{ message: '早安', files: [], sessionId: 'sess-old-00', directSend: true }],
 );
-assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), true, '收到 drawer-ready 后隐藏加载动画');
+assert.strictEqual(loader.classList.contains('ckc-loader--hidden'), true, '收到 drawer-ready 后收起加载页');
+assert.strictEqual(loader.classList.contains('ckc-loader--complete'), true, '收到 drawer-ready 后进度补满 100%（complete）');
 assert.strictEqual(loaderTimer.cleared, true, '收到 drawer-ready 后取消兜底定时器');
 assert.strictEqual(fallbackClose.classList.contains('ckc-close--hidden'), true, '收到 drawer-ready 后内置关闭图标隐藏（关闭交还 iframe 页面的关闭按钮）');
 
@@ -609,7 +613,7 @@ assert.deepStrictEqual(gotVisibility, [
 ]);
 assert.strictEqual(windowMsgs.length, 0, '宿主不再收到原始 postMessage 广播');
 
-// 加载动画兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息）也会停止动画，不至于一直转圈
+// 加载页兜底：超时未收到 drawer-ready（iframe 页面未实现就绪消息）也会收起加载页，不至于一直挡住内容
 const d2 = createDrawer({ env: 'dev', token: 't0', agentCode: 'a0' });
 d2.open();
 const timer2 = fakeTimers[fakeTimers.length - 1];
@@ -617,7 +621,8 @@ assert.strictEqual(timer2.ms, 30000);
 const loader2 = body.children[1].shadowRoot.querySelector('.loader');
 assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), false);
 timer2.fn(); // 模拟超时
-assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), true, '超时兜底停止加载动画');
+assert.strictEqual(loader2.classList.contains('ckc-loader--hidden'), true, '超时兜底收起加载页');
+assert.strictEqual(loader2.classList.contains('ckc-loader--complete'), false, '超时兜底不补进度（未就绪）');
 d2.destroy();
 
 // 环境 → 域名映射；不传 sessionId 时不拼该路径段；agentCode 含特殊字符时做路径编码

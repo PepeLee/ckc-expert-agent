@@ -113,7 +113,9 @@
     border: 0;
     background: #ffffff;
   }
-  /* iframe 就绪（drawer-ready）前的加载动画，避免 iframe 初始化慢时抽屉长时间空白 */
+  /* iframe 就绪（drawer-ready）前的加载页：小蓝图标居中 + 模拟进度条 + 提示文案（浅蓝科技感，底色 #E9F1FF 与小蓝色系统一）；
+     就绪后进度补满 100%（.ckc-loader--complete）再淡出；超时兜底（LOADER_FALLBACK_MS）不补进度直接淡出。
+     全部动效纯 CSS 驱动，不占 JS 定时器 */
   .loader {
     position: absolute;
     inset: 0;
@@ -122,29 +124,156 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
-    background: #ffffff;
-    color: #8c8c8c;
-    font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
-    font-size: 14px;
+    gap: 24px;
+    background:
+      radial-gradient(circle at 50% 32%, rgba(255, 255, 255, 0.7) 0%, rgba(255, 255, 255, 0) 55%),
+      #E9F1FF;
+    overflow: hidden;
     pointer-events: none;
   }
-  .ckc-loader--hidden {
-    display: none;
+  /* 科技感底纹：细网格 */
+  .loader::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(37, 99, 180, 0.08) 0 1px, transparent 1px 32px),
+      repeating-linear-gradient(90deg, rgba(37, 99, 180, 0.08) 0 1px, transparent 1px 32px);
   }
-  .loader-spinner {
-    box-sizing: border-box;
-    width: 32px;
-    height: 32px;
-    border: 3px solid #e8e8e8;
-    border-top-color: #1677ff;
-    border-radius: 50%;
-    animation: ckc-loader-spin 0.8s linear infinite;
+  /* 科技感底纹：自上而下缓慢扫过的高光带 */
+  .loader::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 30%;
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.65) 50%, rgba(255, 255, 255, 0) 100%);
+    animation: ckc-loader-scan 3.2s linear infinite;
   }
-  @keyframes ckc-loader-spin {
-    to {
-      transform: rotate(360deg);
+  @keyframes ckc-loader-scan {
+    from {
+      top: -30%;
     }
+    to {
+      top: 100%;
+    }
+  }
+  /* 小蓝图标：悬浮呼吸 + 脉冲光环 + 辉光 */
+  .loader-icon {
+    position: relative;
+    z-index: 1;
+    width: 96px;
+    height: 96px;
+    animation: ckc-loader-float 3s ease-in-out infinite;
+    filter: drop-shadow(0 0 22px rgba(64, 158, 255, 0.45));
+  }
+  .loader-icon svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .loader-icon::after {
+    content: '';
+    position: absolute;
+    inset: -10px;
+    border-radius: 50%;
+    border: 2px solid rgba(94, 168, 255, 0.45);
+    animation: ckc-loader-pulse 2s ease-out infinite;
+  }
+  @keyframes ckc-loader-float {
+    0%,
+    100% {
+      transform: translateY(0);
+    }
+    50% {
+      transform: translateY(-8px);
+    }
+  }
+  @keyframes ckc-loader-pulse {
+    0% {
+      transform: scale(0.86);
+      opacity: 0.9;
+    }
+    100% {
+      transform: scale(1.25);
+      opacity: 0;
+    }
+  }
+  /* 模拟进度条：缓慢推进到 92%，就绪（ckc-loader--complete）补满 100% */
+  .loader-progress {
+    position: relative;
+    z-index: 1;
+    width: 240px;
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(22, 119, 255, 0.14);
+    overflow: hidden;
+  }
+  .loader-progress-fill {
+    width: 100%;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #22d3ee 0%, #3b82f6 55%, #60a5fa 100%);
+    background-size: 200% 100%;
+    box-shadow: 0 0 12px rgba(56, 189, 248, 0.55);
+    transform: scaleX(0.02);
+    transform-origin: left center;
+    animation: ckc-loader-creep 10s ease-out forwards, ckc-loader-shine 1.6s linear infinite;
+  }
+  @keyframes ckc-loader-creep {
+    from {
+      transform: scaleX(0.02);
+    }
+    to {
+      transform: scaleX(0.92);
+    }
+  }
+  @keyframes ckc-loader-shine {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -100% 0;
+    }
+  }
+  .ckc-loader--complete .loader-progress-fill {
+    /* 覆盖 creep 动画（animation 简写重置），进度补满 100% */
+    animation: ckc-loader-shine 1.6s linear infinite;
+    transform: scaleX(1);
+    transition: transform 0.35s ease;
+  }
+  .loader-text {
+    position: relative;
+    z-index: 1;
+    color: #3c5f9a;
+    font-family: system-ui, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+    font-size: 14px;
+    letter-spacing: 4px;
+    text-indent: 4px;
+  }
+  .loader-text::after {
+    content: '';
+    animation: ckc-loader-dots 1.4s infinite;
+  }
+  @keyframes ckc-loader-dots {
+    0% {
+      content: '';
+    }
+    25% {
+      content: '.';
+    }
+    50% {
+      content: '..';
+    }
+    75% {
+      content: '...';
+    }
+  }
+  /* 隐藏 = 淡出（留一瞬给 100% 进度）；loader 本身 pointer-events: none，不挡 iframe 交互 */
+  .ckc-loader--hidden {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.4s ease 0.25s, visibility 0s linear 0.65s;
   }
   /* iframe 未就绪（drawer-ready 未收到，如服务未启动、加载被拦截）时右上角的内置关闭图标：
      此时 iframe 页面自己的关闭按钮不可用，给用户一个能关掉抽屉的出口；就绪后自动隐藏 */
@@ -182,7 +311,7 @@
     <button class="btn" type="button" aria-label="打开抽屉">
       ${t}
     </button>
-  `,re()}let N=null,P=null,F=null,I=!1,L=`handle`,R=!1,z=!1,B=!1,V=null,H=null,U=[],W=new Set,G=new Set,K=new Set,ie=e=>{k=m(e,D,O),N&&(N.style.width=`${k}px`)},ae=e=>{if(!F||e.source!==F.contentWindow)return;let t=e.data;if(t&&t.source===`ckc-expert-agent`){if(t.type===`drawer-ready`)se();else if(t.type===`drawer-message`){let e=t.payload;if(!e||typeof e.message!=`string`||!Array.isArray(e.files)||!e.files.every(g))return;for(let t of[...W])t(e)}else if(t.type===`drawer-session`){let e=t.payload;if(typeof e!=`string`||e===``)return;for(let t of[...G])t(e)}else if(t.type===`drawer-session-state`){let e=t.sessionActive;if(typeof e!=`boolean`)return;B=e}else if(t.type===`drawer-fullscreen`){let e=t.fullscreen;if(typeof e!=`boolean`)return;ie(e?O:D)}else t.type===`drawer-close`&&Q()}};window.addEventListener(`message`,ae);let q=e=>{let t=F==null?void 0:F.contentWindow;if(!t)return!1;try{return t.postMessage(e,ne),!0}catch(e){return console.warn(`[ckc-expert-agent] 向 iframe 发消息失败（iframe 可能未真正加载）：`,e),!1}},oe=()=>{var e;N==null||(e=N.shadowRoot)==null||(e=e.querySelector(`.loader`))==null||e.classList.add(`ckc-loader--hidden`)},se=()=>{var t;for(z=!0,V!==null&&(clearTimeout(V),V=null),oe(),N==null||(t=N.shadowRoot)==null||(t=t.querySelector(`.close-btn`))==null||t.classList.add(`ckc-close--hidden`),q({source:`ckc-expert-agent`,type:`drawer-config`,payload:{closeSessionOnClose:e.closeSessionOnClose===!0,newSessionOnLauncherOpen:e.newSessionOnLauncherOpen===!0}}),q(J(I)),q(ce());U.length>0&&q(U[0]);)U.shift()},J=e=>{let t={source:`ckc-expert-agent`,type:`drawer-visibility-change`,visible:e};return e&&(t.openSource=L),t},ce=()=>({source:`ckc-expert-agent`,type:`drawer-width-state`,atMax:k===O,atMin:k===D}),le=()=>{z&&q(ce())},Y=e=>{let t=[];for(let n of[...K])try{let r=n(e,B);r&&typeof r.then==`function`?t.push(r.then(e=>e,e=>{console.warn(`[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理`,e)})):t.push(r)}catch(e){console.warn(`[ckc-expert-agent] onVisibilityChange 回调执行出错，按默认显隐处理`,e)}return t},ue=e=>{z&&q(J(e)),Y(e)},X=null,de=0,Z=null,fe=()=>(Z==null||Z(),new Promise(t=>{let n=document.createElement(`div`),r=n.attachShadow({mode:`open`});r.innerHTML=`
+  `,re()}let N=null,P=null,F=null,I=!1,L=`handle`,R=!1,z=!1,B=!1,V=null,H=null,U=[],W=new Set,G=new Set,K=new Set,ie=e=>{k=m(e,D,O),N&&(N.style.width=`${k}px`)},ae=e=>{if(!F||e.source!==F.contentWindow)return;let t=e.data;if(t&&t.source===`ckc-expert-agent`){if(t.type===`drawer-ready`)se();else if(t.type===`drawer-message`){let e=t.payload;if(!e||typeof e.message!=`string`||!Array.isArray(e.files)||!e.files.every(g))return;for(let t of[...W])t(e)}else if(t.type===`drawer-session`){let e=t.payload;if(typeof e!=`string`||e===``)return;for(let t of[...G])t(e)}else if(t.type===`drawer-session-state`){let e=t.sessionActive;if(typeof e!=`boolean`)return;B=e}else if(t.type===`drawer-fullscreen`){let e=t.fullscreen;if(typeof e!=`boolean`)return;ie(e?O:D)}else t.type===`drawer-close`&&Q()}};window.addEventListener(`message`,ae);let q=e=>{let t=F==null?void 0:F.contentWindow;if(!t)return!1;try{return t.postMessage(e,ne),!0}catch(e){return console.warn(`[ckc-expert-agent] 向 iframe 发消息失败（iframe 可能未真正加载）：`,e),!1}},oe=()=>{var e;N==null||(e=N.shadowRoot)==null||(e=e.querySelector(`.loader`))==null||e.classList.add(`ckc-loader--hidden`)},se=()=>{var t,n;for(z=!0,V!==null&&(clearTimeout(V),V=null),oe(),N==null||(t=N.shadowRoot)==null||(t=t.querySelector(`.loader`))==null||t.classList.add(`ckc-loader--complete`),N==null||(n=N.shadowRoot)==null||(n=n.querySelector(`.close-btn`))==null||n.classList.add(`ckc-close--hidden`),q({source:`ckc-expert-agent`,type:`drawer-config`,payload:{closeSessionOnClose:e.closeSessionOnClose===!0,newSessionOnLauncherOpen:e.newSessionOnLauncherOpen===!0}}),q(J(I)),q(ce());U.length>0&&q(U[0]);)U.shift()},J=e=>{let t={source:`ckc-expert-agent`,type:`drawer-visibility-change`,visible:e};return e&&(t.openSource=L),t},ce=()=>({source:`ckc-expert-agent`,type:`drawer-width-state`,atMax:k===O,atMin:k===D}),le=()=>{z&&q(ce())},Y=e=>{let t=[];for(let n of[...K])try{let r=n(e,B);r&&typeof r.then==`function`?t.push(r.then(e=>e,e=>{console.warn(`[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理`,e)})):t.push(r)}catch(e){console.warn(`[ckc-expert-agent] onVisibilityChange 回调执行出错，按默认显隐处理`,e)}return t},ue=e=>{z&&q(J(e)),Y(e)},X=null,de=0,Z=null,fe=()=>(Z==null||Z(),new Promise(t=>{let n=document.createElement(`div`),r=n.attachShadow({mode:`open`});r.innerHTML=`
         <style>${p}</style>
         <div class="confirm-overlay">
           <div class="confirm-backdrop"></div>
@@ -194,7 +323,7 @@
             </div>
           </div>
         </div>
-      `,r.querySelector(`.confirm-message`).textContent=e.confirmOnCloseText||f,r.querySelector(`.confirm-overlay`).style.zIndex=String(T);let i=r.querySelector(`.confirm-btn--ok`),a=r.querySelector(`.confirm-btn--cancel`),o=r.querySelector(`.confirm-backdrop`),s=!1,c=e=>{s||(s=!0,Z=null,window.removeEventListener(`keydown`,l),n.remove(),t(e))},l=e=>{e.key===`Escape`?(e.preventDefault(),c(!1)):e.key===`Enter`&&(e.preventDefault(),c(!0))};i.addEventListener(`click`,()=>c(!0)),a.addEventListener(`click`,()=>c(!1)),o.addEventListener(`click`,()=>c(!1)),window.addEventListener(`keydown`,l),Z=()=>c(!1),document.body.appendChild(n),i.focus()})),pe=(e,t)=>{if(!(R||e===I)){if(e)N||he(),N.classList.remove(`ckc-drawer--hidden`),N.inert=!1,P==null||P.classList.remove(`ckc-mask--hidden`),L=t,I=!0;else{if(!N)return;N.classList.add(`ckc-drawer--hidden`),N.inert=!0,P==null||P.classList.add(`ckc-mask--hidden`),I=!1}z&&q(J(e))}},me=(t,n)=>{if(R||X===t||X===null&&t===I)return;let r=++de;X=t,Z==null||Z();let i;t===!1&&e.confirmOnClose===!0?(Y(t),i=B?[fe().then(e=>!e)]:[]):i=Y(t),(async()=>{let e;for(let t of i){let n=t;if(n&&typeof n.then==`function`)try{n=await n}catch(e){console.warn(`[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理`,e),n=void 0}if(typeof n==`boolean`){e=n;break}}R||r!==de||(X=null,pe(e===void 0?t:e,n))})()},Q=()=>{me(!1,L)},he=()=>{var t;let n=document.createElement(`div`),r=n.attachShadow({mode:`open`});r.innerHTML=`
+      `,r.querySelector(`.confirm-message`).textContent=e.confirmOnCloseText||f,r.querySelector(`.confirm-overlay`).style.zIndex=String(T);let i=r.querySelector(`.confirm-btn--ok`),a=r.querySelector(`.confirm-btn--cancel`),o=r.querySelector(`.confirm-backdrop`),s=!1,c=e=>{s||(s=!0,Z=null,window.removeEventListener(`keydown`,l),n.remove(),t(e))},l=e=>{e.key===`Escape`?(e.preventDefault(),c(!1)):e.key===`Enter`&&(e.preventDefault(),c(!0))};i.addEventListener(`click`,()=>c(!0)),a.addEventListener(`click`,()=>c(!1)),o.addEventListener(`click`,()=>c(!1)),window.addEventListener(`keydown`,l),Z=()=>c(!1),document.body.appendChild(n),i.focus()})),pe=(e,t)=>{if(!(R||e===I)){if(e)N||he(),N.classList.remove(`ckc-drawer--hidden`),N.inert=!1,P==null||P.classList.remove(`ckc-mask--hidden`),L=t,I=!0;else{if(!N)return;N.classList.add(`ckc-drawer--hidden`),N.inert=!0,P==null||P.classList.add(`ckc-mask--hidden`),I=!1}z&&q(J(e))}},me=(t,n)=>{if(R||X===t||X===null&&t===I)return;let r=++de;X=t,Z==null||Z();let i;t===!1&&e.confirmOnClose===!0?(Y(t),i=B?[fe().then(e=>!e)]:[]):i=Y(t),(async()=>{let e;for(let t of i){let n=t;if(n&&typeof n.then==`function`)try{n=await n}catch(e){console.warn(`[ckc-expert-agent] onVisibilityChange 回调的 Promise 被拒绝，按默认显隐处理`,e),n=void 0}if(typeof n==`boolean`){e=n;break}}R||r!==de||(X=null,pe(e===void 0?t:e,n))})()},Q=()=>{me(!1,L)},he=()=>{var n;let r=document.createElement(`div`),i=r.attachShadow({mode:`open`});i.innerHTML=`
       <style>${te}</style>
       <div class="panel">
         ${e.resizable===!1?``:`<div class="resize-handle"></div>`}
@@ -202,12 +331,13 @@
           <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
         </button>
         <div class="loader">
-          <div class="loader-spinner"></div>
-          <div class="loader-text">加载中…</div>
+          <div class="loader-icon">${t}</div>
+          <div class="loader-progress"><div class="loader-progress-fill"></div></div>
+          <div class="loader-text">正在努力加载中</div>
         </div>
       </div>
-    `;let i=r.querySelector(`.panel`),a=r.querySelector(`.resize-handle`);r.querySelector(`.close-btn`).addEventListener(`click`,Q);let o=document.createElement(`iframe`);if(o.className=`frame`,o.title=`ckc-expert-agent`,o.allow=`focus`,o.src=_(w,e.token,e.agentCode,e.sessionId),i.appendChild(o),a==null||a.addEventListener(`pointerdown`,e=>{if(e.pointerType===`mouse`&&e.button!==0)return;e.preventDefault(),H==null||H();let t=e.pointerId,r=e.clientX,i=n.getBoundingClientRect().width,s=!1;n.classList.add(`ckc-drawer--dragging`);let c=o.style.pointerEvents;o.style.pointerEvents=`none`;try{a.setPointerCapture(t)}catch(e){}function l(e){e.pointerId===t&&(e.buttons===0?u():(k=m(i+(r-e.clientX),D,O),n.style.width=`${k}px`))}function u(){s||(s=!0,n.classList.remove(`ckc-drawer--dragging`),o.style.pointerEvents=c,a.hasPointerCapture(t)&&a.releasePointerCapture(t),window.removeEventListener(`pointermove`,l),window.removeEventListener(`pointerup`,u),window.removeEventListener(`pointercancel`,u),window.removeEventListener(`blur`,u),document.removeEventListener(`visibilitychange`,d),H===u&&(H=null),R||le())}function d(){document.visibilityState===`hidden`&&u()}H=u,window.addEventListener(`pointermove`,l),window.addEventListener(`pointerup`,u),window.addEventListener(`pointercancel`,u),window.addEventListener(`blur`,u),document.addEventListener(`visibilitychange`,d)}),e.mask===!0&&!P){var s;let t=document.createElement(`div`);t.style.zIndex=String(T-1);let n=t.attachShadow({mode:`open`});n.innerHTML=`
+    `;let a=i.querySelector(`.panel`),o=i.querySelector(`.resize-handle`);i.querySelector(`.close-btn`).addEventListener(`click`,Q);let s=document.createElement(`iframe`);if(s.className=`frame`,s.title=`ckc-expert-agent`,s.allow=`focus`,s.src=_(w,e.token,e.agentCode,e.sessionId),a.appendChild(s),o==null||o.addEventListener(`pointerdown`,e=>{if(e.pointerType===`mouse`&&e.button!==0)return;e.preventDefault(),H==null||H();let t=e.pointerId,n=e.clientX,i=r.getBoundingClientRect().width,a=!1;r.classList.add(`ckc-drawer--dragging`);let c=s.style.pointerEvents;s.style.pointerEvents=`none`;try{o.setPointerCapture(t)}catch(e){}function l(e){e.pointerId===t&&(e.buttons===0?u():(k=m(i+(n-e.clientX),D,O),r.style.width=`${k}px`))}function u(){a||(a=!0,r.classList.remove(`ckc-drawer--dragging`),s.style.pointerEvents=c,o.hasPointerCapture(t)&&o.releasePointerCapture(t),window.removeEventListener(`pointermove`,l),window.removeEventListener(`pointerup`,u),window.removeEventListener(`pointercancel`,u),window.removeEventListener(`blur`,u),document.removeEventListener(`visibilitychange`,d),H===u&&(H=null),R||le())}function d(){document.visibilityState===`hidden`&&u()}H=u,window.addEventListener(`pointermove`,l),window.addEventListener(`pointerup`,u),window.addEventListener(`pointercancel`,u),window.addEventListener(`blur`,u),document.addEventListener(`visibilitychange`,d)}),e.mask===!0&&!P){var c;let t=document.createElement(`div`);t.style.zIndex=String(T-1);let n=t.attachShadow({mode:`open`});n.innerHTML=`
         <style>${ee}</style>
         <div class="mask"></div>
-      `,e.maskClosable===!0&&(t.addEventListener(`click`,Q),t.style.cursor=`pointer`),((s=document.body)==null?document.documentElement:s).appendChild(t),P=t}return n.style.width=`${k}px`,n.style.zIndex=String(T),((t=document.body)==null?document.documentElement:t).appendChild(n),V=setTimeout(()=>{V=null,z||(oe(),console.warn(`[ckc-expert-agent] 超时未收到 iframe 的 drawer-ready 就绪消息，已停止加载动画；若 iframe 内容仍为空，请确认 iframe 页面已在初始化完成后发送 { source: 'ckc-expert-agent', type: 'drawer-ready' }`))},d),N=n,F=o,n},$=e=>{me(!0,e)};return A==null||A.addEventListener(`pointerdown`,e=>{let t=A;if(e.pointerType===`mouse`&&e.button!==0)return;e.preventDefault(),H==null||H();let n=e.pointerId,r=e.clientX,i=e.clientY,a=j,o=M,s=!1,l=!1;t.classList.add(`ckc-launcher--dragging`);let d=F,f=d?d.style.pointerEvents:``;d&&(d.style.pointerEvents=`none`);try{t.setPointerCapture(n)}catch(e){}function p(e){if(e.pointerId!==n)return;if(e.buttons===0){h(!1);return}let t=e.clientX-r,l=e.clientY-i;!s&&Math.hypot(t,l)<=u||(s=!0,j=m(a+t,0,window.innerWidth-c),M=m(o+l,0,window.innerHeight-c),re())}function h(e){l||(l=!0,t.classList.remove(`ckc-launcher--dragging`),d&&(d.style.pointerEvents=f),t.hasPointerCapture(n)&&t.releasePointerCapture(n),window.removeEventListener(`pointermove`,p),window.removeEventListener(`pointerup`,g),window.removeEventListener(`pointercancel`,_),window.removeEventListener(`blur`,_),document.removeEventListener(`visibilitychange`,v),H===_&&(H=null),!s&&e&&$(`launcher`))}function g(){h(!0)}function _(){h(!1)}function v(){document.visibilityState===`hidden`&&h(!1)}H=_,window.addEventListener(`pointermove`,p),window.addEventListener(`pointerup`,g),window.addEventListener(`pointercancel`,_),window.addEventListener(`blur`,_),document.addEventListener(`visibilitychange`,v)}),A&&((C=document.body)==null?document.documentElement:C).appendChild(A),{get iframe(){return F},get isOpen(){return I&&!R},open:()=>$(`handle`),close:Q,setWidth:e=>{ie(e)},sendMessage:e=>{if(R)return;$(`handle`);let t={source:`ckc-expert-agent`,type:`drawer-message`,payload:e},n=()=>{U.length>=100&&U.shift(),U.push(t)};!F||!z?n():q(t)||n()},receiveMessage:e=>(W.add(e),()=>{W.delete(e)}),receiveSessionId:e=>(G.add(e),()=>{G.delete(e)}),onVisibilityChange:e=>(K.add(e),()=>{K.delete(e)}),destroy:()=>{R||(R=!0,window[s]=Math.max(0,h()-1),H==null||H(),Z==null||Z(),V!==null&&(clearTimeout(V),V=null),I&&(I=!1,ue(!1)),window.removeEventListener(`message`,ae),W.clear(),G.clear(),K.clear(),U.length=0,A==null||A.remove(),N==null||N.remove(),N=null,P==null||P.remove(),P=null,F=null)}}}typeof window<`u`&&(window.createCkcDrawer=y),e.createDrawer=y});
+      `,e.maskClosable===!0&&(t.addEventListener(`click`,Q),t.style.cursor=`pointer`),((c=document.body)==null?document.documentElement:c).appendChild(t),P=t}return r.style.width=`${k}px`,r.style.zIndex=String(T),((n=document.body)==null?document.documentElement:n).appendChild(r),V=setTimeout(()=>{V=null,z||(oe(),console.warn(`[ckc-expert-agent] 超时未收到 iframe 的 drawer-ready 就绪消息，已停止加载动画；若 iframe 内容仍为空，请确认 iframe 页面已在初始化完成后发送 { source: 'ckc-expert-agent', type: 'drawer-ready' }`))},d),N=r,F=s,r},$=e=>{me(!0,e)};return A==null||A.addEventListener(`pointerdown`,e=>{let t=A;if(e.pointerType===`mouse`&&e.button!==0)return;e.preventDefault(),H==null||H();let n=e.pointerId,r=e.clientX,i=e.clientY,a=j,o=M,s=!1,l=!1;t.classList.add(`ckc-launcher--dragging`);let d=F,f=d?d.style.pointerEvents:``;d&&(d.style.pointerEvents=`none`);try{t.setPointerCapture(n)}catch(e){}function p(e){if(e.pointerId!==n)return;if(e.buttons===0){h(!1);return}let t=e.clientX-r,l=e.clientY-i;!s&&Math.hypot(t,l)<=u||(s=!0,j=m(a+t,0,window.innerWidth-c),M=m(o+l,0,window.innerHeight-c),re())}function h(e){l||(l=!0,t.classList.remove(`ckc-launcher--dragging`),d&&(d.style.pointerEvents=f),t.hasPointerCapture(n)&&t.releasePointerCapture(n),window.removeEventListener(`pointermove`,p),window.removeEventListener(`pointerup`,g),window.removeEventListener(`pointercancel`,_),window.removeEventListener(`blur`,_),document.removeEventListener(`visibilitychange`,v),H===_&&(H=null),!s&&e&&$(`launcher`))}function g(){h(!0)}function _(){h(!1)}function v(){document.visibilityState===`hidden`&&h(!1)}H=_,window.addEventListener(`pointermove`,p),window.addEventListener(`pointerup`,g),window.addEventListener(`pointercancel`,_),window.addEventListener(`blur`,_),document.addEventListener(`visibilitychange`,v)}),A&&((C=document.body)==null?document.documentElement:C).appendChild(A),{get iframe(){return F},get isOpen(){return I&&!R},open:()=>$(`handle`),close:Q,setWidth:e=>{ie(e)},sendMessage:e=>{if(R)return;$(`handle`);let t={source:`ckc-expert-agent`,type:`drawer-message`,payload:e},n=()=>{U.length>=100&&U.shift(),U.push(t)};!F||!z?n():q(t)||n()},receiveMessage:e=>(W.add(e),()=>{W.delete(e)}),receiveSessionId:e=>(G.add(e),()=>{G.delete(e)}),onVisibilityChange:e=>(K.add(e),()=>{K.delete(e)}),destroy:()=>{R||(R=!0,window[s]=Math.max(0,h()-1),H==null||H(),Z==null||Z(),V!==null&&(clearTimeout(V),V=null),I&&(I=!1,ue(!1)),window.removeEventListener(`message`,ae),W.clear(),G.clear(),K.clear(),U.length=0,A==null||A.remove(),N==null||N.remove(),N=null,P==null||P.remove(),P=null,F=null)}}}typeof window<`u`&&(window.createCkcDrawer=y),e.createDrawer=y});
 //# sourceMappingURL=ckc-expert-agent.umd.js.map
