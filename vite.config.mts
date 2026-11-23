@@ -1,13 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
-
-const pkg = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as {
-  version: string;
-};
+// 版本号单一来源是 package.json 的 version（注入产物里的 __CKC_VERSION__），发版只改一处
+import pkg from './package.json';
 
 export default defineConfig({
   define: {
-    // 版本号注入产物（src 里的 __CKC_VERSION__）：单一来源是 package.json 的 version，发版只改一处
     __CKC_VERSION__: JSON.stringify(pkg.version),
   },
   build: {
