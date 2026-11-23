@@ -1,5 +1,11 @@
 import { LAUNCHER_ICON_SVG } from './icon';
 
+// 构建时由 Vite define 注入的版本号（见 vite.config.mts），单一来源是 package.json 的 version
+declare const __CKC_VERSION__: string;
+
+/** 组件版本号（= package.json 的 version）：npm 接入 `import { version }`，script 标签在控制台 `window.CkcExpertAgent.version` */
+export const version = __CKC_VERSION__;
+
 /** 附件文件 */
 export interface DrawerFile {
   /** 文件名 */

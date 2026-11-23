@@ -1,3 +1,5 @@
+/** 组件版本号（= package.json 的 version）：npm 接入 `import { version }`，script 标签在控制台 `window.CkcExpertAgent.version` */
+export declare const version: string;
 /** 附件文件 */
 export interface DrawerFile {
     /** 文件名 */

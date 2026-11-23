@@ -122,7 +122,7 @@ npm run test:server  # 启动本地服务 http://localhost:4173
 <button onclick="drawer.close()">关闭</button>
 ```
 
-也支持通过 UMD 全局对象访问：`window.CkcExpertAgent.createDrawer()`（与 `window.createCkcDrawer` 是同一个方法）。
+也支持通过 UMD 全局对象访问：`window.CkcExpertAgent.createDrawer()`（与 `window.createCkcDrawer` 是同一个方法）；`window.CkcExpertAgent.version` 为组件版本号（排障时可确定接入方实际使用的版本）。
 
 ### npm 安装（打包器 / TypeScript 项目）
 
@@ -144,6 +144,7 @@ drawer.open();
 ```
 
 - 打包器按 `exports` 优先加载 ESM 产物（`ckc-expert-agent.es.mjs`），`require`（CJS）走 UMD 产物；类型声明随包分发，`DrawerOptions` / `DrawerHandle` / `DrawerFile` 等类型均可直接 import
+- 导出 `version`（构建时从 `package.json` 注入，发版单一来源）：npm `import { version } from 'ckc-expert-agent'`——排障时可确定接入方实际使用的版本
 - npm 引入后 `window.createCkcDrawer` 同样挂载；UMD 全局（`CkcExpertAgent`）的类型也随声明提供（`export as namespace`），script 标签 + TS 的接入方复制 `dist/index.d.ts` 即可获得类型
 - 与 `<script>` 标签方式二选一，行为完全一致
 

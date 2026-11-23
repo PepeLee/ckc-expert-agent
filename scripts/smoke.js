@@ -127,7 +127,7 @@ global.window = {
 };
 
 // ---------- 加载 UMD 产物 ----------
-const { createDrawer } = require(path.join(__dirname, '..', 'dist', 'ckc-expert-agent.umd.js'));
+const { createDrawer, version } = require(path.join(__dirname, '..', 'dist', 'ckc-expert-agent.umd.js'));
 
 // 捕获 setTimeout/clearTimeout：用于手动触发/验证加载动画兜底定时器
 const fakeTimers = [];
@@ -1023,6 +1023,9 @@ const dtsText = fs.readFileSync(path.join(__dirname, '..', pkg.types), 'utf8');
 for (const sym of ['createDrawer', 'DrawerOptions', 'DrawerHandle', 'DrawerFile']) {
   assert.ok(dtsText.includes(sym), `类型声明 ${pkg.types} 缺少导出 ${sym}`);
 }
+assert.ok(dtsText.includes('export declare const version'), '类型声明缺少 version 导出');
+// version 单一来源是 package.json（构建时注入）：产物里的值必须与 package.json 一致
+assert.strictEqual(version, pkg.version, '产物导出的 version 应与 package.json 的 version 一致');
 assert.ok(dtsText.includes('export as namespace'), '类型声明缺少 UMD 全局声明（export as namespace）');
 const esText = fs.readFileSync(path.join(__dirname, '..', pkg.module), 'utf8');
 assert.ok(/\bcreateDrawer\b/.test(esText), `ESM 产物 ${pkg.module} 缺少 createDrawer 导出`);
